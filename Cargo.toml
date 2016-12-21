@@ -1,0 +1,29 @@
+[package]
+name = "volunode-rs"
+version = "0.1.0"
+authors = [
+    "Artem Vorotnikov <artem@vorotnikov.me>",
+]
+description = "BOINC client for Linux"
+repository = "https://github.com/volunode/volunode-rs"
+keywords = [
+    "boinc",
+    "rpc",
+    "api",
+]
+categories = [
+    "boinc",
+]
+license = "GPL-3.0"
+
+[dependencies]
+bytes = "*"
+chrono = "*"
+futures = "*"
+futures-cpupool = "*"
+rust-crypto = "*"
+tokio-io = "*"
+tokio-proto = "*"
+tokio-service = "*"
+treexml = "*"
+uuid = "*"
