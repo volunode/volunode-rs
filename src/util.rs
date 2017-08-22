@@ -63,9 +63,22 @@ where
     }
 }
 
-pub fn serialize_node<T>(name: &str, v: &T) -> treexml::ElementBuilder where T: std::fmt::Display {
+pub fn serialize_node<T>(name: &str, v: &T) -> treexml::ElementBuilder
+where
+    T: std::fmt::Display,
+{
     let mut e = treexml::ElementBuilder::new(name);
     e.text(format!("{}", &v));
+
+    e
+}
+
+pub fn serialize_cdata<T>(name: &str, v: &T) -> treexml::ElementBuilder
+where
+    T: std::fmt::Display,
+{
+    let mut e = treexml::ElementBuilder::new(name);
+    e.cdata(format!("{}", &v));
 
     e
 }

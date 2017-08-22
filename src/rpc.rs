@@ -19,6 +19,7 @@ use self::crypto::md5::Md5;
 use std::io;
 use std::sync::{Arc, RwLock};
 
+use messages;
 use state;
 
 pub struct RPCCodec;
@@ -131,12 +132,15 @@ impl TcpService {
         match &*v.name {
             "get_message_count" => {
                 treexml::ElementBuilder::new("seqno")
-                    .text(format!(
-                        "{}",
-                        self.state.read().unwrap().messages.len() - 1
-                    ))
+                    .text(format!("{}", self.state.read().unwrap().messages.len()))
                     .element()
             }
+            "get_messages" => {
+                println!("received get_messages");
+                let seqno = v.find_value("seqno").unwrap_or(None);
+                self.state.read().unwrap().messages.to_xml(seqno).element()
+            }
+            "get_state" => (&*self.state.read().unwrap()).into(),
             _ => v.clone(),
         }
     }

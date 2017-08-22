@@ -4,6 +4,7 @@ extern crate treexml;
 use std::sync::{Arc, RwLock};
 
 use common;
+use util;
 
 #[derive(Clone, Debug)]
 pub struct Message {
@@ -13,11 +14,50 @@ pub struct Message {
     pub timestamp: common::Time,
 }
 
-pub trait Logger : Sync {
+impl<'a> From<&'a Message> for treexml::ElementBuilder {
+    fn from(v: &Message) -> treexml::ElementBuilder {
+        let mut out = treexml::ElementBuilder::new("msg");
+        out.children(vec![
+            &mut util::serialize_node(
+                "project",
+                v.project_name
+                    .as_ref()
+                    .or(Some(&"---".into()))
+                    .unwrap()
+            ),
+            &mut util::serialize_node(
+                "pri",
+                &u8::from(v.priority.clone())
+            ),
+            &mut util::serialize_cdata("body", &v.body),
+            &mut util::serialize_node(
+                "time",
+                &v.timestamp.timestamp()
+            ),
+        ]);
+        out
+    }
+}
+
+pub trait Logger {
     fn insert(&self, Option<&common::ProjAm>, common::MessagePriority, common::Time, &str);
     fn cleanup(&self);
     fn len(&self) -> usize;
     fn get(&self, start: usize) -> Vec<Message>;
+
+    fn to_xml(&self, seqno: Option<usize>) -> treexml::ElementBuilder {
+        let mut out = treexml::Element::new("msgs");
+        out.children = self.get(seqno.or(Some(1)).unwrap())
+            .into_iter()
+            .enumerate()
+            .map(|(i, msg)| {
+                let mut e = treexml::ElementBuilder::from(&msg);
+                e.children(vec![&mut util::serialize_node("seqno", &(i + 1))]);
+                e.element()
+            })
+            .collect();
+        out.into()
+    }
 }
 
 pub type SafeLogger = Arc<Logger + Send + Sync>;
@@ -26,8 +66,6 @@ pub type SafeLogger = Arc<Logger + Send + Sync>;
 pub struct MessageDescs {
     msgs: RwLock<Vec<Message>>,
 }
-
-unsafe impl Sync for MessageDescs {}
 
 impl Logger for MessageDescs {
     fn insert(
@@ -53,21 +91,21 @@ impl Logger for MessageDescs {
         self.msgs.read().unwrap().len()
     }
 
-    fn get(&self, start: usize) -> Vec<Message> {
+    fn get(&self, seqno: usize) -> Vec<Message> {
         let data = self.msgs.read().unwrap();
-        match data.get(start..data.len()-1) {
-            Some(out) => {
-                out.into()
+        if seqno < 1 {
+            vec![]
+        } else {
+            match data.get(seqno - 1..data.len() - 1) {
+                Some(out) => out.into(),
+                None => vec![],
             }
-            None => vec![]
         }
     }
 }
 
 impl Clone for MessageDescs {
     fn clone(&self) -> MessageDescs {
-        MessageDescs {
-            msgs: RwLock::new(self.msgs.read().unwrap().clone())
-        }
+        MessageDescs { msgs: RwLock::new(self.msgs.read().unwrap().clone()) }
     }
 }

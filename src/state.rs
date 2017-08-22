@@ -32,9 +32,7 @@ impl ClientState {
     pub fn new(messages: messages::SafeLogger) -> ClientState {
         {
             let now = Arc::new(RwLock::new(None));
-            let clock_source = Arc::new(move || {
-                now.read().unwrap().clone().unwrap()
-            });
+            let clock_source = Arc::new(move || now.read().unwrap().clone().unwrap());
             let mut v = ClientState {
                 now: Arc::new(RwLock::new(None)),
                 messages: messages.clone(),

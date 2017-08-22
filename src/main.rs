@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::str;
@@ -14,8 +15,8 @@ mod util;
 mod workunit;
 
 fn main() {
-    let messages = Arc::new(messages::MessageDescs::default());
-    let client_state = Arc::new(RwLock::new(state::ClientState::new(messages.clone())));
+    let m: messages::SafeLogger = Arc::new(messages::MessageDescs::default());
+    let client_state = Arc::new(RwLock::new(state::ClientState::new(m.clone())));
     let addr = "127.0.0.1:31417".parse().unwrap();
     let password = Some("mypass".into());
 
@@ -23,6 +24,14 @@ fn main() {
         let s = client_state.clone();
         move || rpc::StartRpcServer(s, addr, password)
     });
+
+    let msgs: &(messages::Logger + Send + Sync) = m.borrow();
+    msgs.insert(
+        None,
+        common::MessagePriority::Info,
+        std::time::SystemTime::now().into(),
+        "Starting main thread",
+    );
 
     loop {
         std::thread::park();
