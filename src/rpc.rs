@@ -19,6 +19,7 @@ use self::crypto::md5::Md5;
 use std::io;
 use std::sync::{Arc, RwLock};
 
+use common;
 use messages;
 use state;
 
@@ -242,13 +243,23 @@ pub fn StartRpcServer(
 ) -> () {
     let server = tokio_proto::TcpServer::new(RPCProto, addr);
     let thread_pool = futures_cpupool::CpuPool::new(10);
-    let p = password.clone();
-    let cb = move || {
-        Ok(TcpService::new(
-            client_state.clone(),
-            thread_pool.clone(),
-            p.clone(),
-        ))
+    let cb = {
+        let client_state = client_state.clone();
+        let password = password.clone();
+        move || {
+            Ok(TcpService::new(
+                client_state.clone(),
+                thread_pool.clone(),
+                password.clone(),
+            ))
+        }
     };
+    let m = &*client_state.read().unwrap().messages;
+    m.insert(
+        None,
+        common::MessagePriority::Debug,
+        std::time::SystemTime::now().into(),
+        &format!("Starting RPC server at {}", &addr),
+    );
     server.serve(cb);
 }

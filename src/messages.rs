@@ -2,6 +2,7 @@ extern crate std;
 extern crate treexml;
 
 use std::sync::{Arc, RwLock};
+use std::fmt::Display;
 
 use common;
 use util;
@@ -39,6 +40,22 @@ impl<'a> From<&'a Message> for treexml::ElementBuilder {
     }
 }
 
+impl Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{} [{}] {}",
+            self.timestamp,
+            match self.project_name.as_ref() {
+                Some(s) => s.as_str(),
+                None => "---",
+            },
+            self.body
+        );
+        Ok(())
+    }
+}
+
 pub trait Logger {
     fn insert(&self, Option<&common::ProjAm>, common::MessagePriority, common::Time, &str);
     fn cleanup(&self);
@@ -63,11 +80,11 @@ pub trait Logger {
 pub type SafeLogger = Arc<Logger + Send + Sync>;
 
 #[derive(Debug, Default)]
-pub struct MessageDescs {
+pub struct StandardLogger {
     msgs: RwLock<Vec<Message>>,
 }
 
-impl Logger for MessageDescs {
+impl Logger for StandardLogger {
     fn insert(
         &self,
         project: Option<&common::ProjAm>,
@@ -75,12 +92,17 @@ impl Logger for MessageDescs {
         now: common::Time,
         msg: &str,
     ) {
-        self.msgs.write().unwrap().push(Message {
+        let m = Message {
             project_name: project.map(|p| p.get_project_name().into()),
             priority: priority,
             body: msg.into(),
             timestamp: now,
-        })
+        };
+        let msgs = &mut *self.msgs.write().unwrap();
+        let s = format!("{}", &m);
+
+        msgs.push(m);
+        println!("{}", s);
     }
 
     fn cleanup(&self) {
@@ -96,7 +118,7 @@ impl Logger for MessageDescs {
         if seqno < 1 {
             vec![]
         } else {
-            match data.get(seqno - 1..data.len() - 1) {
+            match data.get(seqno - 1..data.len()) {
                 Some(out) => out.into(),
                 None => vec![],
             }
@@ -104,8 +126,8 @@ impl Logger for MessageDescs {
     }
 }
 
-impl Clone for MessageDescs {
-    fn clone(&self) -> MessageDescs {
-        MessageDescs { msgs: RwLock::new(self.msgs.read().unwrap().clone()) }
+impl Clone for StandardLogger {
+    fn clone(&self) -> StandardLogger {
+        StandardLogger { msgs: RwLock::new(self.msgs.read().unwrap().clone()) }
     }
 }

@@ -1,8 +1,3 @@
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::str;
-
 mod app;
 mod common;
 mod errors;
@@ -14,8 +9,12 @@ mod state;
 mod util;
 mod workunit;
 
+use std::borrow::Borrow;
+use std::sync::{Arc, RwLock};
+use std::str;
+
 fn main() {
-    let m: messages::SafeLogger = Arc::new(messages::MessageDescs::default());
+    let m: messages::SafeLogger = Arc::new(messages::StandardLogger::default());
     let client_state = Arc::new(RwLock::new(state::ClientState::new(m.clone())));
     let addr = "127.0.0.1:31417".parse().unwrap();
     let password = Some("mypass".into());
@@ -30,7 +29,7 @@ fn main() {
         None,
         common::MessagePriority::Info,
         std::time::SystemTime::now().into(),
-        "Starting main thread",
+        "Main thread is up and parked",
     );
 
     loop {
