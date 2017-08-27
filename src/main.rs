@@ -1,5 +1,6 @@
 mod app;
 mod common;
+mod constants;
 mod errors;
 mod hostinfo;
 mod messages;
@@ -16,7 +17,15 @@ use std::str;
 fn main() {
     let m: messages::SafeLogger = Arc::new(messages::StandardLogger::default());
     let client_state = Arc::new(RwLock::new(state::ClientState::new(m.clone())));
-    let addr = "127.0.0.1:31417".parse().unwrap();
+    let addr = format!(
+        "127.0.0.1:{}",
+        std::env::var(constants::ENV_RPC_PORT)
+            .ok()
+            .map(|p| p.parse::<u16>().ok())
+            .unwrap_or(Some(constants::DEFAULT_RPC_PORT))
+            .unwrap_or(constants::DEFAULT_RPC_PORT)
+    ).parse()
+        .unwrap();
     let password = Some("mypass".into());
 
     std::thread::spawn({
