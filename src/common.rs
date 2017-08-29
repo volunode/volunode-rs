@@ -49,10 +49,10 @@ impl MessagePriority {
 }
 
 pub trait ProjAm {
-    fn master_url(&self) -> String;
-    fn project_name(&self) -> Option<String>;
+    fn master_url(&self) -> &str;
+    fn project_name(&self) -> Option<&str>;
 
-    fn get_project_name(&self) -> String {
+    fn get_project_name(&self) -> &str {
         self.project_name().or(Some(self.master_url())).unwrap()
     }
 }

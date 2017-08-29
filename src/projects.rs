@@ -15,12 +15,12 @@ pub struct Project {
 }
 
 impl common::ProjAm for Project {
-    fn master_url(&self) -> String {
-        self._master_url.clone()
+    fn master_url(&self) -> &str {
+        &self._master_url
     }
 
-    fn project_name(&self) -> Option<String> {
-        self._project_name.clone()
+    fn project_name(&self) -> Option<&str> {
+        self._project_name.as_ref().map(|s| s.as_str())
     }
 }
 
