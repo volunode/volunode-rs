@@ -3,6 +3,7 @@ extern crate crypto;
 extern crate futures;
 extern crate futures_cpupool;
 extern crate std;
+extern crate tokio_core;
 extern crate tokio_io;
 extern crate tokio_proto;
 extern crate tokio_service;
@@ -97,7 +98,7 @@ enum AuthState {
 }
 
 #[derive(Clone)]
-struct TcpService {
+struct RpcService {
     cpu_pool: futures_cpupool::CpuPool,
 
     state: Arc<RwLock<state::ClientState>>,
@@ -106,13 +107,13 @@ struct TcpService {
     rpcpass: Option<String>,
 }
 
-impl TcpService {
+impl RpcService {
     fn new(
         state: Arc<RwLock<state::ClientState>>,
         cpu_pool: futures_cpupool::CpuPool,
         pass: Option<String>,
-    ) -> TcpService {
-        TcpService {
+    ) -> RpcService {
+        RpcService {
             cpu_pool: cpu_pool,
             state: state,
             conn_status: Arc::new(RwLock::new(AuthState::New)),
@@ -147,7 +148,7 @@ impl TcpService {
     }
 }
 
-impl Service for TcpService {
+impl Service for RpcService {
     type Request = treexml::Element;
     type Response = treexml::Element;
 
@@ -241,19 +242,10 @@ pub fn StartRpcServer(
     addr: std::net::SocketAddr,
     password: Option<String>,
 ) -> () {
+    let mut core = tokio_core::reactor::Core::new().unwrap();
+    let handle = core.handle();
     let server = tokio_proto::TcpServer::new(RPCProto, addr);
     let thread_pool = futures_cpupool::CpuPool::new(10);
-    let cb = {
-        let client_state = client_state.clone();
-        let password = password.clone();
-        move || {
-            Ok(TcpService::new(
-                client_state.clone(),
-                thread_pool.clone(),
-                password.clone(),
-            ))
-        }
-    };
     let m = &*client_state.read().unwrap().messages;
     m.insert(
         None,
@@ -261,5 +253,21 @@ pub fn StartRpcServer(
         std::time::SystemTime::now().into(),
         &format!("Starting RPC server at {}", &addr),
     );
-    server.serve(cb);
+    server.with_handle({
+        let client_state = client_state.clone();
+        let password = password.clone();
+        let thread_pool = thread_pool.clone();
+        move |core| {
+            let client_state = client_state.clone();
+            let password = password.clone();
+            let thread_pool = thread_pool.clone();
+            move || {
+                Ok(RpcService::new(
+                    client_state.clone(),
+                    thread_pool.clone(),
+                    password.clone(),
+                ))
+            }
+        }
+    });
 }
