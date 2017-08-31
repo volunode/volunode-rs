@@ -10,13 +10,12 @@ mod state;
 mod util;
 mod workunit;
 
-use std::borrow::Borrow;
 use std::sync::{Arc, RwLock};
 use std::str;
 
 fn main() {
     let m: messages::SafeLogger = Arc::new(messages::StandardLogger::default());
-    let client_state = Arc::new(RwLock::new(state::ClientState::new(m.clone())));
+    let reactor = Arc::new(state::ClientStateReactor::new(m.clone()));
     let addr = format!(
         "127.0.0.1:{}",
         std::env::var(constants::ENV_RPC_PORT)
@@ -29,19 +28,18 @@ fn main() {
     let password = Some("mypass".into());
 
     std::thread::spawn({
-        let s = client_state.clone();
-        move || rpc::StartRpcServer(s, addr, password)
+        let reactor = reactor.clone();
+        move || rpc::StartRpcServer(reactor, addr, password)
     });
 
-    let msgs: &(messages::Logger + Send + Sync) = m.borrow();
-    msgs.insert(
-        None,
-        common::MessagePriority::Info,
-        std::time::SystemTime::now().into(),
-        "Main thread is up and parked",
-    );
+    reactor.oneshot(|cs| {
+        cs.read().unwrap().messages.insert(
+            None,
+            common::MessagePriority::Info,
+            std::time::SystemTime::now().into(),
+            "Main thread is up and parked",
+        );
+    });
 
-    loop {
-        std::thread::park();
-    }
+    reactor.run(true);
 }

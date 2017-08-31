@@ -18,6 +18,7 @@ license = "GPL-3.0"
 
 [dependencies]
 bytes = "*"
+chan = "*"
 chrono = "*"
 futures = "*"
 futures-cpupool = "*"

@@ -1,7 +1,7 @@
 extern crate chrono;
 extern crate std;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
 pub type ClockSource = Arc<Fn() -> Time + Sync + Send>;

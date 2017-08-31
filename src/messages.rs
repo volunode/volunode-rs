@@ -115,13 +115,9 @@ impl Logger for StandardLogger {
 
     fn get(&self, seqno: usize) -> Vec<Message> {
         let data = self.msgs.read().unwrap();
-        if seqno < 1 {
-            vec![]
-        } else {
-            match data.get(seqno - 1..data.len()) {
-                Some(out) => out.into(),
-                None => vec![],
-            }
+        match data.get(if seqno < 1 { 1 } else { seqno } - 1..data.len()) {
+            Some(out) => out.into(),
+            None => vec![],
         }
     }
 }

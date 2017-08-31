@@ -1,7 +1,6 @@
 extern crate std;
 extern crate treexml;
 
-use std::fmt::Debug;
 use std::str::FromStr;
 
 use errors;

@@ -1,4 +1,5 @@
 extern crate bytes;
+extern crate chan;
 extern crate crypto;
 extern crate futures;
 extern crate futures_cpupool;
@@ -101,7 +102,7 @@ enum AuthState {
 struct RpcService {
     cpu_pool: futures_cpupool::CpuPool,
 
-    state: Arc<RwLock<state::ClientState>>,
+    state: Arc<state::ClientStateReactor>,
     conn_status: Arc<RwLock<AuthState>>,
 
     rpcpass: Option<String>,
@@ -109,7 +110,7 @@ struct RpcService {
 
 impl RpcService {
     fn new(
-        state: Arc<RwLock<state::ClientState>>,
+        state: Arc<state::ClientStateReactor>,
         cpu_pool: futures_cpupool::CpuPool,
         pass: Option<String>,
     ) -> RpcService {
@@ -130,20 +131,35 @@ impl RpcService {
         })
     }
 
-    fn process_request(&self, v: &treexml::Element) -> treexml::Element {
+    fn process_request(&self, v: &treexml::Element) -> Option<treexml::Element> {
         match &*v.name {
             "get_message_count" => {
-                treexml::ElementBuilder::new("seqno")
-                    .text(format!("{}", self.state.read().unwrap().messages.len()))
-                    .element()
+                Some(
+                    treexml::ElementBuilder::new("seqno")
+                        .text(format!(
+                            "{}",
+                            self.state.await(
+                                move |cs| cs.read().unwrap().messages.len(),
+                            )
+                        ))
+                        .element(),
+                )
             }
             "get_messages" => {
                 println!("received get_messages");
                 let seqno = v.find_value("seqno").unwrap_or(None);
-                self.state.read().unwrap().messages.to_xml(seqno).element()
+                Some(
+                    self.state
+                        .await(move |cs| cs.read().unwrap().messages.to_xml(seqno))
+                        .element(),
+                )
             }
-            "get_state" => (&*self.state.read().unwrap()).into(),
-            _ => v.clone(),
+            "get_state" => {
+                Some(self.state.await(move |cs| {
+                    treexml::Element::from(&*cs.read().unwrap())
+                }))
+            }
+            _ => None,
         }
     }
 }
@@ -156,10 +172,16 @@ impl Service for RpcService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, full_request: Self::Request) -> Self::Future {
-        let rsp_ok = |mut v: treexml::ElementBuilder| {
+        let rsp_ok = |mut v: Option<treexml::Element>| {
             future::ok(
                 treexml::ElementBuilder::new("boinc_gui_rpc_reply")
-                    .children(vec![&mut v])
+                    .children(
+                        match v {
+                            Some(v) => vec![v.into()],
+                            None => vec![],
+                        }.iter_mut()
+                            .collect(),
+                    )
                     .element(),
             ).boxed()
         };
@@ -167,11 +189,11 @@ impl Service for RpcService {
 
         let unauthorize = |s: &mut AuthState| {
             *s = AuthState::Unauthorized;
-            treexml::ElementBuilder::new("unauthorized")
+            rsp_ok(Some(treexml::ElementBuilder::new("unauthorized").element()))
         };
         let authorize = |s: &mut AuthState| {
             *s = AuthState::Ready;
-            treexml::ElementBuilder::new("authorized")
+            rsp_ok(Some(treexml::ElementBuilder::new("authorized").element()))
         };
 
         let mut s = self.conn_status.write().unwrap();
@@ -198,12 +220,12 @@ impl Service for RpcService {
                                     self.salted_hash(&nonce).unwrap()
                                 );
 
-                                rsp_ok(v)
+                                rsp_ok(Some(v.element()))
                             }
-                            &None => rsp_ok(authorize(&mut *s)),
+                            &None => authorize(&mut *s),
                         }
                     } else {
-                        rsp_ok(unauthorize(&mut *s))
+                        unauthorize(&mut *s)
                     }
                 }
                 AuthState::ChallengeSent(ref nonce) => {
@@ -212,15 +234,15 @@ impl Service for RpcService {
                             match opt_response {
                                 Some(response) => {
                                     if self.salted_hash(nonce).unwrap() == response {
-                                        rsp_ok(authorize(&mut *s))
+                                        authorize(&mut *s)
                                     } else {
-                                        rsp_ok(unauthorize(&mut *s))
+                                        unauthorize(&mut *s)
                                     }
                                 }
-                                None => rsp_ok(unauthorize(&mut *s)),
+                                None => unauthorize(&mut *s),
                             }
                         }
-                        Err(_) => rsp_ok(unauthorize(&mut *s)),
+                        Err(_) => unauthorize(&mut *s),
                     }
                 }
                 AuthState::Unauthorized => {
@@ -238,7 +260,7 @@ impl Service for RpcService {
 }
 
 pub fn StartRpcServer(
-    client_state: Arc<RwLock<state::ClientState>>,
+    client_state: Arc<state::ClientStateReactor>,
     addr: std::net::SocketAddr,
     password: Option<String>,
 ) -> () {
@@ -246,13 +268,18 @@ pub fn StartRpcServer(
     let handle = core.handle();
     let server = tokio_proto::TcpServer::new(RPCProto, addr);
     let thread_pool = futures_cpupool::CpuPool::new(10);
-    let m = &*client_state.read().unwrap().messages;
-    m.insert(
-        None,
-        common::MessagePriority::Debug,
-        std::time::SystemTime::now().into(),
-        &format!("Starting RPC server at {}", &addr),
-    );
+    client_state.oneshot({
+        let addr = addr.clone();
+        move |cs| {
+            let m = &*cs.read().unwrap().messages;
+            m.insert(
+                None,
+                common::MessagePriority::Debug,
+                std::time::SystemTime::now().into(),
+                &format!("Starting RPC server at {}", &addr),
+            );
+        }
+    });
     server.with_handle({
         let client_state = client_state.clone();
         let password = password.clone();
