@@ -23,7 +23,7 @@ impl<'a> From<&'a Message> for treexml::ElementBuilder {
                 "project",
                 v.project_name
                     .as_ref()
-                    .or(Some(&"---".into()))
+                    .or(Some(&"".into()))
                     .unwrap()
             ),
             &mut util::serialize_node(
@@ -115,9 +115,13 @@ impl Logger for StandardLogger {
 
     fn get(&self, seqno: usize) -> Vec<Message> {
         let data = self.msgs.read().unwrap();
-        match data.get(if seqno < 1 { 1 } else { seqno } - 1..data.len()) {
-            Some(out) => out.into(),
-            None => vec![],
+        if seqno >= data.len() {
+            vec![]
+        } else {
+            match data.get(if seqno < 1 { 1 } else { seqno } - 1..data.len()) {
+                Some(out) => out.into(),
+                None => vec![],
+            }
         }
     }
 }

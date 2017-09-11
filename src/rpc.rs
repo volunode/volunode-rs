@@ -17,11 +17,13 @@ use self::tokio_service::Service;
 use self::bytes::BytesMut;
 use self::crypto::digest::Digest;
 use self::crypto::md5::Md5;
+use self::io::Read;
 
 use std::io;
 use std::sync::{Arc, RwLock};
 
 use common;
+use constants;
 use messages;
 use state;
 
@@ -102,7 +104,7 @@ enum AuthState {
 struct RpcService {
     cpu_pool: futures_cpupool::CpuPool,
 
-    state: Arc<state::ClientStateReactor>,
+    context: Arc<state::Context<state::ClientState>>,
     conn_status: Arc<RwLock<AuthState>>,
 
     rpcpass: Option<String>,
@@ -110,13 +112,13 @@ struct RpcService {
 
 impl RpcService {
     fn new(
-        state: Arc<state::ClientStateReactor>,
+        c: Arc<state::Context<state::ClientState>>,
         cpu_pool: futures_cpupool::CpuPool,
         pass: Option<String>,
     ) -> RpcService {
         RpcService {
             cpu_pool: cpu_pool,
-            state: state,
+            context: c,
             conn_status: Arc::new(RwLock::new(AuthState::New)),
             rpcpass: pass,
         }
@@ -138,26 +140,49 @@ impl RpcService {
                     treexml::ElementBuilder::new("seqno")
                         .text(format!(
                             "{}",
-                            self.state.await(
-                                move |cs| cs.read().unwrap().messages.len(),
+                            self.context.await(
+                                move |state| state.unwrap().messages.len(),
                             )
                         ))
                         .element(),
                 )
             }
             "get_messages" => {
-                println!("received get_messages");
                 let seqno = v.find_value("seqno").unwrap_or(None);
                 Some(
-                    self.state
-                        .await(move |cs| cs.read().unwrap().messages.to_xml(seqno))
+                    self.context
+                        .await(move |state| state.unwrap().messages.to_xml(seqno))
                         .element(),
                 )
             }
+            "get_notices" => Some(treexml::Element::new("notices")),
             "get_state" => {
-                Some(self.state.await(move |cs| {
-                    treexml::Element::from(&*cs.read().unwrap())
+                Some(self.context.await(move |state| {
+                    treexml::Element::from(state.unwrap())
                 }))
+            }
+            "get_all_projects_list" => {
+                match std::fs::File::open(constants::ALL_PROJECTS_LIST_FILENAME) {
+                    Err(_) => None,
+                    Ok(mut file) => {
+                        let mut s = String::new();
+                        match file.read_to_string(&mut s) {
+                            Err(_) => None,
+                            Ok(_) => {
+                                match treexml::Document::parse(
+                                    std::io::Cursor::new(format!("<root>{}</root>", &s)),
+                                ) {
+                                    Err(_) => None,
+                                    Ok(doc) => {
+                                        let mut e = treexml::Element::new("projects");
+                                        e.children = doc.root.unwrap().children;
+                                        Some(e)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             _ => None,
         }
@@ -172,7 +197,7 @@ impl Service for RpcService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, full_request: Self::Request) -> Self::Future {
-        let rsp_ok = |mut v: Option<treexml::Element>| {
+        let rsp_ok = |v: Option<treexml::Element>| {
             future::ok(
                 treexml::ElementBuilder::new("boinc_gui_rpc_reply")
                     .children(
@@ -259,20 +284,17 @@ impl Service for RpcService {
     }
 }
 
-pub fn StartRpcServer(
-    client_state: Arc<state::ClientStateReactor>,
+pub fn start_rpc_server(
+    context: Arc<state::Context<state::ClientState>>,
     addr: std::net::SocketAddr,
     password: Option<String>,
 ) -> () {
-    let mut core = tokio_core::reactor::Core::new().unwrap();
-    let handle = core.handle();
     let server = tokio_proto::TcpServer::new(RPCProto, addr);
     let thread_pool = futures_cpupool::CpuPool::new(10);
-    client_state.oneshot({
+    context.run({
         let addr = addr.clone();
-        move |cs| {
-            let m = &*cs.read().unwrap().messages;
-            m.insert(
+        move |state| {
+            state.unwrap().messages.insert(
                 None,
                 common::MessagePriority::Debug,
                 std::time::SystemTime::now().into(),
@@ -281,16 +303,16 @@ pub fn StartRpcServer(
         }
     });
     server.with_handle({
-        let client_state = client_state.clone();
+        let context = context.clone();
         let password = password.clone();
         let thread_pool = thread_pool.clone();
-        move |core| {
-            let client_state = client_state.clone();
+        move |_| {
+            let context = context.clone();
             let password = password.clone();
             let thread_pool = thread_pool.clone();
             move || {
                 Ok(RpcService::new(
-                    client_state.clone(),
+                    context.clone(),
                     thread_pool.clone(),
                     password.clone(),
                 ))

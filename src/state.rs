@@ -14,17 +14,132 @@ use std::ops::Deref;
 
 use std::sync::{Arc, RwLock};
 
+pub type ContextData<V> = Arc<RwLock<Option<V>>>;
+
+pub struct ContextMonad<V, T: Send + 'static> {
+    pub f: Box<Fn() -> (ContextData<V>, T) + Send + 'static>,
+}
+
+impl<V: 'static, T: Send + 'static> ContextMonad<V, T> {
+    pub fn bind<F, U>(self, func: F) -> ContextMonad<V, U>
+    where
+        F: Fn(Option<&V>, T) -> U,
+        F: Send + 'static,
+        U: Send,
+    {
+        ContextMonad::<V, U> {
+            f: Box::new(move || {
+                let (c, t) = (self.f)();
+                let u = func(c.read().unwrap().as_ref(), t);
+                (c, u)
+            }),
+        }
+    }
+
+    pub fn bind_mut<F, U>(self, func: F) -> ContextMonad<V, U>
+    where
+        F: Fn(Option<&mut V>, T) -> U,
+        F: Send + 'static,
+        U: Send,
+    {
+        ContextMonad::<V, U> {
+            f: Box::new(move || {
+                let (c, t) = (self.f)();
+                let u = func(c.write().unwrap().as_mut(), t);
+                (c, u)
+            }),
+        }
+    }
+
+    pub fn assemble(self) -> Box<Fn() -> T + Send + 'static> {
+        Box::new(move || (self.f)().1)
+    }
+
+    pub fn run(self) -> std::thread::JoinHandle<T> {
+        std::thread::spawn({
+            move || self.assemble()()
+        })
+    }
+
+    pub fn await(self) -> T {
+        self.run().join().unwrap()
+    }
+}
+
+pub struct Context<V: Send + Sync + 'static> {
+    data: ContextData<V>,
+}
+
+impl<V: Send + Sync + 'static> Drop for Context<V> {
+    fn drop(&mut self) {
+        *self.data.write().unwrap() = None;
+    }
+}
+
+impl<V: Send + Sync + 'static> Context<V> {
+    pub fn new(v: V) -> Self {
+        Self { data: Arc::new(RwLock::new(Some(v))) }
+    }
+
+    pub fn compose(&self) -> ContextMonad<V, ()> {
+        ContextMonad {
+            f: {
+                Box::new({
+                    let data = self.data.clone();
+                    move || (data.clone(), ())
+                })
+            },
+        }
+    }
+
+    pub fn run<F, T>(&self, f: F) -> std::thread::JoinHandle<T>
+    where
+        F: Fn(Option<&V>) -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        self.compose().bind(move |data, _| f(data)).run()
+    }
+
+    pub fn await<F, T>(&self, f: F) -> T
+    where
+        F: Fn(Option<&V>) -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        self.run(f).join().unwrap()
+    }
+
+    pub fn run_mut<F, T>(&self, f: F) -> std::thread::JoinHandle<T>
+    where
+        F: Fn(Option<&mut V>) -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        self.compose().bind_mut(move |data, _| f(data)).run()
+    }
+
+    pub fn await_mut<F, T>(&self, f: F) -> T
+    where
+        F: Fn(Option<&mut V>) -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        self.run_mut(f).join().unwrap()
+    }
+}
+
 pub struct ClientState {
     pub messages: messages::SafeLogger,
 
-    pub host_info: Arc<RwLock<hostinfo::HostInfo>>,
-    pub projects: Arc<RwLock<projects::Projects>>,
+    pub host_info: hostinfo::HostInfo,
+    pub projects: projects::Projects,
 }
 
 impl<'a> From<&'a ClientState> for treexml::Element {
     fn from(v: &ClientState) -> treexml::Element {
-        let host_info = v.host_info.read().unwrap();
-        let projects = v.projects.read().unwrap();
+        let host_info = &v.host_info;
+        let projects = &v.projects;
 
         treexml::ElementBuilder::new("client_state")
             .children(vec![&mut host_info.deref().into()])
@@ -33,7 +148,7 @@ impl<'a> From<&'a ClientState> for treexml::Element {
                     .deref()
                     .data
                     .iter()
-                    .map(|v| treexml::Element::from(v).into())
+                    .map(|v| treexml::Element::from(&*v.read().unwrap()).into())
                     .collect::<Vec<treexml::ElementBuilder>>()
                     .iter_mut()
                     .collect(),
@@ -43,16 +158,13 @@ impl<'a> From<&'a ClientState> for treexml::Element {
 }
 
 impl ClientState {
-    pub fn new(messages: messages::SafeLogger) -> ClientState {
+    pub fn new(messages: messages::SafeLogger) -> Self {
         {
             let clock_source = Arc::new(move || std::time::SystemTime::now().into());
-            let mut v = ClientState {
+            let mut v = Self {
                 messages: messages.clone(),
-                host_info: Arc::new(RwLock::new(hostinfo::HostInfo::default())),
-                projects: Arc::new(RwLock::new(projects::Projects::new(
-                    clock_source.clone(),
-                    messages.clone(),
-                ))),
+                host_info: hostinfo::HostInfo::default(),
+                projects: projects::Projects::new(clock_source.clone(), messages.clone()),
             };
 
             v
@@ -64,73 +176,6 @@ impl ClientState {
             .write_fmt(format_args!("{}", treexml::Element::from(self)))?;
         Ok(())
     }
-}
 
-pub type ClientStateAction = Arc<Fn(&RwLock<ClientState>) -> bool + Send + Sync>;
-
-pub struct ClientStateReactor {
-    data: Arc<RwLock<ClientState>>,
-    tasks: chan::Receiver<ClientStateAction>,
-    feeder: chan::Sender<ClientStateAction>,
-}
-
-impl ClientStateReactor {
-    pub fn new(messages: messages::SafeLogger) -> ClientStateReactor {
-        let (tx, rx) = chan::async();
-        ClientStateReactor {
-            data: Arc::new(RwLock::new(ClientState::new(messages))),
-            tasks: rx,
-            feeder: tx,
-        }
-    }
-
-    pub fn queue<F>(&self, v: F)
-    where
-        F: 'static + Fn(&RwLock<ClientState>) -> bool + Send + Sync,
-    {
-        self.feeder.send(Arc::new(v));
-    }
-
-    pub fn oneshot<F>(&self, f: F)
-    where
-        F: 'static + Fn(&RwLock<ClientState>) + Send + Sync,
-    {
-        self.queue(move |cs| {
-            f(cs);
-            false
-        })
-    }
-
-    pub fn await<T, F>(&self, f: F) -> T
-    where
-        T: 'static + Send,
-        F: 'static + Fn(&RwLock<ClientState>) -> T + Send + Sync,
-    {
-        let (tx, rx) = chan::async();
-        self.oneshot(move |cs| { tx.send(f(cs)); });
-        rx.recv().unwrap()
-    }
-
-    pub fn run(&self, multithreaded: bool) {
-        loop {
-            match self.tasks.recv() {
-                Some(f) => {
-                    if multithreaded {
-                        std::thread::spawn({
-                            let data = self.data.clone();
-                            let feeder = self.feeder.clone();
-                            move || if f(&*data) {
-                                feeder.send(f);
-                            }
-                        });
-                    } else {
-                        if f(&*self.data) {
-                            self.feeder.send(f);
-                        }
-                    }
-                }
-                None => return,
-            }
-        }
-    }
+    pub fn attach_project(&self, url: &str) {}
 }
