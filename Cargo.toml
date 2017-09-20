@@ -17,9 +17,11 @@ categories = [
 license = "GPL-3.0"
 
 [dependencies]
+boinc_app_api = { git = "https://github.com/volunode/boinc-app-api-rs" }
 bytes = "*"
 chan = "*"
 chrono = "*"
+error-chain = "*"
 futures = "*"
 futures-cpupool = "*"
 rust-crypto = "*"
@@ -29,5 +31,6 @@ tokio-core = "*"
 tokio-io = "*"
 tokio-proto = "*"
 tokio-service = "*"
-treexml = "*"
-uuid = "*"
+treexml = { git = "https://github.com/vorot93/treexml-rs", branch = "patch-1" }
+treexml_util = { git = "https://github.com/vorot93/treexml-util" }
+uuid = { version = "*", features = ["use_std", "serde", "v4"] }

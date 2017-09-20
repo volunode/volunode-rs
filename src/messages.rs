@@ -1,11 +1,11 @@
 extern crate std;
 extern crate treexml;
+extern crate treexml_util;
 
 use std::sync::{Arc, RwLock};
 use std::fmt::Display;
 
 use common;
-use util;
 
 #[derive(Clone, Debug)]
 pub struct Message {
@@ -15,28 +15,21 @@ pub struct Message {
     pub timestamp: common::Time,
 }
 
-impl<'a> From<&'a Message> for treexml::ElementBuilder {
-    fn from(v: &Message) -> treexml::ElementBuilder {
-        let mut out = treexml::ElementBuilder::new("msg");
-        out.children(vec![
-            &mut util::serialize_node(
-                "project",
-                v.project_name
-                    .as_ref()
-                    .or(Some(&"".into()))
-                    .unwrap()
-            ),
-            &mut util::serialize_node(
-                "pri",
-                &u8::from(v.priority.clone())
-            ),
-            &mut util::serialize_cdata("body", &v.body),
-            &mut util::serialize_node(
-                "time",
-                &v.timestamp.timestamp()
-            ),
-        ]);
-        out
+impl<'a> From<&'a Message> for treexml::Element {
+    fn from(v: &Message) -> treexml::Element {
+        treexml::Element {
+            name: "msg".into(),
+            children: vec![
+                treexml_util::serialize_node(
+                    "project",
+                    v.project_name.as_ref().or(Some(&"".into())).unwrap()
+                ),
+                treexml_util::serialize_node("pri", &u8::from(v.priority.clone())),
+                treexml_util::serialize_cdata("body", &v.body),
+                treexml_util::serialize_node("time", &v.timestamp.timestamp()),
+            ],
+            ..Default::default()
+        }
     }
 }
 
@@ -68,9 +61,11 @@ pub trait Logger {
             .into_iter()
             .enumerate()
             .map(|(i, msg)| {
-                let mut e = treexml::ElementBuilder::from(&msg);
-                e.children(vec![&mut util::serialize_node("seqno", &(i + 1))]);
-                e.element()
+                let mut e = treexml::Element::from(&msg);
+                e.children.push(
+                    treexml_util::serialize_node("seqno", &(i + 1)),
+                );
+                e
             })
             .collect();
         out.into()

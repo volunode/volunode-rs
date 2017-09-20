@@ -51,6 +51,21 @@ impl<V: 'static, T: Send + 'static> ContextMonad<V, T> {
         }
     }
 
+    pub fn bind_rwlock<F, U>(self, func: F) -> ContextMonad<V, U>
+    where
+        F: Fn(&RwLock<Option<V>>, T) -> U,
+        F: Send + 'static,
+        U: Send,
+    {
+        ContextMonad::<V, U> {
+            f: Box::new(move || {
+                let (c, t) = (self.f)();
+                let u = func(&c, t);
+                (c, u)
+            }),
+        }
+    }
+
     pub fn assemble(self) -> Box<Fn() -> T + Send + 'static> {
         Box::new(move || (self.f)().1)
     }
@@ -141,19 +156,21 @@ impl<'a> From<&'a ClientState> for treexml::Element {
         let host_info = &v.host_info;
         let projects = &v.projects;
 
-        treexml::ElementBuilder::new("client_state")
-            .children(vec![&mut host_info.deref().into()])
-            .children(
-                projects
+        treexml::Element {
+            name: "client_state".into(),
+            children: {
+                let mut v = Vec::new();
+                v.push(host_info.deref().into());
+                v.append(&mut projects
                     .deref()
                     .data
                     .iter()
-                    .map(|v| treexml::Element::from(&*v.read().unwrap()).into())
-                    .collect::<Vec<treexml::ElementBuilder>>()
-                    .iter_mut()
-                    .collect(),
-            )
-            .element()
+                    .map(|v| v.into())
+                    .collect());
+                v
+            },
+            ..Default::default()
+        }
     }
 }
 

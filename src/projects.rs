@@ -1,6 +1,7 @@
 extern crate chrono;
 extern crate crypto;
 extern crate treexml;
+extern crate treexml_util;
 extern crate uuid;
 
 use app;
@@ -46,6 +47,8 @@ pub struct Project {
     pub next_rpc_time: common::Time,
     pub master_url_fetch_pending: bool,
 
+    pub disk_usage: f64,
+
     pub suspended_via_gui: bool,
     pub dont_request_more_work: bool,
 }
@@ -62,28 +65,30 @@ impl common::ProjAm for Project {
 
 impl<'a> From<&'a Project> for treexml::Element {
     fn from(v: &Project) -> treexml::Element {
-        treexml::ElementBuilder::new("project")
-            .children(vec![
-                treexml::ElementBuilder::new("master_url").text(
-                    v.master_url()
-                ),
-                treexml::ElementBuilder::new("project_name").text(
-                    v.get_project_name()
-                ),
-            ])
-            .element()
+        treexml::Element {
+            name: "project".into(),
+            children: vec![
+                treexml_util::serialize_node("master_url", v.master_url()),
+                treexml_util::serialize_node("project_name", v.get_project_name()),
+            ],
+            ..Default::default()
+        }
     }
 }
 
 impl Project {
-    fn can_request_work(&self, now: common::ClockSource) -> bool {
+    pub fn can_request_work(&self, now: common::ClockSource) -> bool {
         !(self.suspended_via_gui || self.master_url_fetch_pending || self.min_rpc_time > now() ||
               self.dont_request_more_work)
+    }
+
+    pub fn start_computation(&mut self) {
+        self.apps.iter_mut().map(|app| {});
     }
 }
 
 pub struct Projects {
-    pub data: Vec<RwLock<Project>>,
+    pub data: Vec<Project>,
     clock_source: common::ClockSource,
     logger: messages::SafeLogger,
 }
@@ -97,13 +102,19 @@ impl Projects {
         }
     }
 
-    pub fn find_project(&self, k: &str) -> Option<&RwLock<Project>> {
-        for proj in self.data.iter() {
-            if proj.read().unwrap().get_project_name() == k {
-                return Some(&proj);
-            }
-        }
+    pub fn find_project<F: Fn(&Project)>(&self, k: &str, f: F) {
+        self.data.iter().map(
+            |proj| if proj.get_project_name() == k {
+                f(proj);
+            },
+        );
+    }
 
-        None
+    pub fn find_project_mut<F: Fn(&mut Project)>(&mut self, k: &str, f: F) {
+        self.data.iter_mut().map(
+            |proj| if proj.get_project_name() == k {
+                f(proj);
+            },
+        );
     }
 }

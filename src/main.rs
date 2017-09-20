@@ -1,3 +1,7 @@
+#![recursion_limit = "1024"]
+
+#[macro_use]
+extern crate error_chain;
 #[macro_use]
 extern crate serde;
 
@@ -17,6 +21,69 @@ mod workunit;
 use std::sync::{Arc, RwLock};
 use std::str;
 
+fn launch_service_threads(context: &state::Context<state::ClientState>) {
+    context
+        .compose()
+        .bind_rwlock(|r, _| loop {
+            match r.read().unwrap().as_ref() {
+                Some(state) => {
+                    state.messages.insert(
+                        None,
+                        common::MessagePriority::Info,
+                        std::time::SystemTime::now().into(),
+                        "Service 1 ping",
+                    )
+                }
+                None => {
+                    return;
+                }
+            };
+            std::thread::sleep(std::time::Duration::from_millis(2500));
+        })
+        .run();
+
+    context
+        .compose()
+        .bind_rwlock(|r, _| loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            match r.read().unwrap().as_ref() {
+                Some(state) => {
+                    state.messages.insert(
+                        None,
+                        common::MessagePriority::Info,
+                        std::time::SystemTime::now().into(),
+                        "Service 2 ping",
+                    )
+                }
+                None => {
+                    return;
+                }
+            };
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        })
+        .run();
+
+    context
+        .compose()
+        .bind_rwlock(|r, _| loop {
+            match r.write().unwrap().as_mut() {
+                Some(ref mut state) => {
+                    state.messages.insert(
+                        None,
+                        common::MessagePriority::Info,
+                        std::time::SystemTime::now().into(),
+                        "Mutating service ping",
+                    )
+                }
+                None => {
+                    return;
+                }
+            };
+            std::thread::sleep(std::time::Duration::from_millis(2000));
+        })
+        .run();
+}
+
 fn main() {
     let context = Arc::new(state::Context::new(state::ClientState::new(
         Arc::new(messages::StandardLogger::default()),
@@ -25,8 +92,7 @@ fn main() {
         "127.0.0.1:{}",
         std::env::var(constants::ENV_RPC_PORT)
             .ok()
-            .map(|p| p.parse::<u16>().ok())
-            .unwrap_or(Some(constants::DEFAULT_RPC_PORT))
+            .and_then(|p| p.parse::<u16>().ok())
             .unwrap_or(constants::DEFAULT_RPC_PORT)
     ).parse()
         .unwrap();
@@ -60,6 +126,8 @@ fn main() {
             }
         })
     });
+
+    launch_service_threads(&context);
 
     context.run(|state| {
         state.unwrap().messages.insert(

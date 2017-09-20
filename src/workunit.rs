@@ -1,4 +1,12 @@
-#[derive(Clone, Debug)]
+use process;
+
+#[derive(Debug)]
+pub enum RunStatus {
+    Stopped,
+    Running(process::Process),
+}
+
+#[derive(Debug)]
 pub struct Workunit {
     pub name: String,
     pub app_name: String,
@@ -7,4 +15,6 @@ pub struct Workunit {
     pub rsc_fpops_bound: f64,
     pub rsc_memory_bound: f64,
     pub rsc_disk_bound: f64,
+
+    pub status: RunStatus,
 }

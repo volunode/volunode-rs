@@ -9,6 +9,12 @@ extern crate tokio_io;
 extern crate tokio_proto;
 extern crate tokio_service;
 extern crate treexml;
+extern crate treexml_util;
+
+use common;
+use constants;
+use messages;
+use state;
 
 use self::futures::{future, Future, BoxFuture};
 use self::tokio_io::{AsyncRead, AsyncWrite};
@@ -19,13 +25,10 @@ use self::crypto::digest::Digest;
 use self::crypto::md5::Md5;
 use self::io::Read;
 
+use common::ProjAm;
+
 use std::io;
 use std::sync::{Arc, RwLock};
-
-use common;
-use constants;
-use messages;
-use state;
 
 pub struct RPCCodec;
 
@@ -183,6 +186,52 @@ impl RpcService {
                         }
                     }
                 }
+            }
+            "get_disk_usage" => {
+                Some({
+                    let mut e = treexml::Element::new("disk_usage_summary");
+                    e.children = self.context.await(|s| {
+                        let state = s.unwrap();
+
+                        let mut out = Vec::new();
+                        out.append(&mut state
+                            .projects
+                            .data
+                            .iter()
+                            .map(|proj| {
+                                treexml::Element {
+                                    name: "project".into(),
+                                    children: vec![
+                                        treexml_util::serialize_node(
+                                            "master_url",
+                                            proj.master_url()
+                                        ),
+                                        treexml_util::serialize_node(
+                                            "disk_usage",
+                                            proj.disk_usage
+                                        ),
+                                    ],
+                                    ..Default::default()
+                                }
+                            })
+                            .collect());
+
+                        out.append(&mut vec![
+                            treexml_util::serialize_node(
+                                "d_total",
+                                &state.host_info.d_total
+                            ),
+                            treexml_util::serialize_node(
+                                "d_free",
+                                &state.host_info.d_free
+                            ),
+                        ]);
+
+                        out
+                    });
+
+                    e
+                })
             }
             _ => None,
         }

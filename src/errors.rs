@@ -1,34 +1,31 @@
 extern crate std;
+
+extern crate error_chain;
 extern crate treexml;
 
-#[derive(PartialEq, Debug)]
-pub enum Error {
-    ConnectError(String),
-    DataParseError(String),
-    InvalidPasswordError(String),
-    DaemonError(String),
-    NullError(String),
-    NetworkError(String),
-    StatusError(i32),
-    AuthError(String),
-    InvalidURLError(String),
-    AlreadyAttachedError(String),
-}
+extern crate boinc_app_api;
 
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error::NetworkError(format!("{}", e))
+error_chain! {
+    links {
+        APIError(boinc_app_api::Error, boinc_app_api::ErrorKind);
+        XMLError(treexml::Error, treexml::ErrorKind);
     }
-}
-
-impl From<std::string::FromUtf8Error> for Error {
-    fn from(e: std::string::FromUtf8Error) -> Self {
-        Error::DataParseError(format!("UTF-8 conversion error: {}", e.utf8_error()))
+    foreign_links {
+        StringConversionError(std::string::FromUtf8Error);
     }
-}
-
-impl From<treexml::Error> for Error {
-    fn from(e: treexml::Error) -> Self {
-        Error::DataParseError(format!("XML error: {}", e))
+    errors {
+        ConnectError(t: String) {
+            description(""),
+            display("{}", t),
+        }
+        //DataParseError(_: String) {}
+        //InvalidPasswordError(_: String) {}
+        //DaemonError(_: String) {}
+        //NullError(_: String) {}
+        //NetworkError(_: String) {}
+        //StatusError(_: i32) {}
+        //AuthError(_: String) {}
+        //InvalidURLError(_: String) {}
+        //AlreadyAttachedError(_: String) {}
     }
 }

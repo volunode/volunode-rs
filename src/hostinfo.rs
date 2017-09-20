@@ -1,9 +1,9 @@
 extern crate treexml;
-
-//use std::convert::TryFrom;
+extern crate treexml_util;
 
 use errors;
-use util;
+
+use self::treexml_util::Unmarshaller;
 
 #[derive(Clone, Debug, Default)]
 pub struct HostInfo {
@@ -37,79 +37,73 @@ pub struct HostInfo {
     pub mac_address: String,
 }
 
-impl<'a> From<&'a HostInfo> for treexml::ElementBuilder {
-    fn from(v: &HostInfo) -> treexml::ElementBuilder {
-        let mut e = treexml::ElementBuilder::new("host_info");
-        e.children(vec![
-            &mut util::serialize_node("tz_shift", &v.tz_shift),
-            &mut util::serialize_node("domain_name", &v.domain_name),
-            &mut util::serialize_node("serialnum", &v.serialnum),
-            &mut util::serialize_node("ip_addr", &v.ip_addr),
-            &mut util::serialize_node("host_cpid", &v.host_cpid),
-            &mut util::serialize_node("p_ncpus", &v.p_ncpus),
-            &mut util::serialize_node("p_vendor", &v.p_vendor),
-            &mut util::serialize_node("p_model", &v.p_model),
-            &mut util::serialize_node("p_features", &v.p_features),
-            &mut util::serialize_node("p_fpops", &v.p_fpops),
-            &mut util::serialize_node("p_iops", &v.p_iops),
-            &mut util::serialize_node("p_membw", &v.p_membw),
-            &mut util::serialize_node(
-                "p_calculated",
-                &v.p_calculated
-            ),
-            &mut util::serialize_node(
-                "p_vm_extensions_disabled",
-                &v.p_vm_extensions_disabled
-            ),
-            &mut util::serialize_node("m_nbytes", &v.m_nbytes),
-            &mut util::serialize_node("m_cache", &v.m_cache),
-            &mut util::serialize_node("m_swap", &v.m_swap),
-            &mut util::serialize_node("d_total", &v.d_total),
-            &mut util::serialize_node("d_free", &v.d_free),
-            &mut util::serialize_node("os_name", &v.os_name),
-            &mut util::serialize_node("os_version", &v.os_version),
-            &mut util::serialize_node(
-                "product_name",
-                &v.product_name
-            ),
-            &mut util::serialize_node("mac_address", &v.mac_address),
-        ]);
-        e
+impl<'a> From<&'a HostInfo> for treexml::Element {
+    fn from(v: &HostInfo) -> treexml::Element {
+        treexml::Element {
+            name: "host_info".into(),
+            children: vec![
+                treexml_util::serialize_node("tz_shift", &v.tz_shift),
+                treexml_util::serialize_node("domain_name", &v.domain_name),
+                treexml_util::serialize_node("serialnum", &v.serialnum),
+                treexml_util::serialize_node("ip_addr", &v.ip_addr),
+                treexml_util::serialize_node("host_cpid", &v.host_cpid),
+                treexml_util::serialize_node("p_ncpus", &v.p_ncpus),
+                treexml_util::serialize_node("p_vendor", &v.p_vendor),
+                treexml_util::serialize_node("p_model", &v.p_model),
+                treexml_util::serialize_node("p_features", &v.p_features),
+                treexml_util::serialize_node("p_fpops", &v.p_fpops),
+                treexml_util::serialize_node("p_iops", &v.p_iops),
+                treexml_util::serialize_node("p_membw", &v.p_membw),
+                treexml_util::serialize_node("p_calculated", &v.p_calculated),
+                treexml_util::serialize_node(
+                    "p_vm_extensions_disabled",
+                    &v.p_vm_extensions_disabled
+                ),
+                treexml_util::serialize_node("m_nbytes", &v.m_nbytes),
+                treexml_util::serialize_node("m_cache", &v.m_cache),
+                treexml_util::serialize_node("m_swap", &v.m_swap),
+                treexml_util::serialize_node("d_total", &v.d_total),
+                treexml_util::serialize_node("d_free", &v.d_free),
+                treexml_util::serialize_node("os_name", &v.os_name),
+                treexml_util::serialize_node("os_version", &v.os_version),
+                treexml_util::serialize_node("product_name", &v.product_name),
+                treexml_util::serialize_node("mac_address", &v.mac_address),
+            ],
+            ..Default::default()
+        }
     }
 }
 
-//impl<'a> TryFrom<&'a treexml::Element> for HostInfo {
-//    type Err = errors::Error;
-fn try_from(node: &treexml::Element) -> Result<HostInfo, errors::Error> {
-    let mut e = HostInfo::default();
-    for ref n in &node.children {
-        util::deserialize_node("p_fpops", &n, &mut e.p_fpops)?;
-        util::deserialize_node("p_iops", &n, &mut e.p_iops)?;
-        util::deserialize_node("p_membw", &n, &mut e.p_membw)?;
-        util::deserialize_node("p_calculated", &n, &mut e.p_calculated)?;
-        util::deserialize_node(
+impl HostInfo {
+    pub fn try_from(node: &treexml::Element) -> errors::Result<HostInfo> {
+        let mut v = HostInfo::default();
+        v.p_fpops.unmarshal("p_fpops", &node)?;
+        v.p_iops.unmarshal("p_iops", &node)?;
+        v.p_membw.unmarshal("p_membw", &node)?;
+        v.p_calculated.unmarshal("p_calculated", &node)?;
+        v.p_vm_extensions_disabled.unmarshal(
             "p_vm_extensions_disabled",
-            &n,
-            &mut e.p_vm_extensions_disabled,
+            &node,
         )?;
-        util::deserialize_node("host_cpid", &n, &mut e.host_cpid)?;
-        util::deserialize_node("product_name", &n, &mut e.product_name)?;
-        util::deserialize_node("mac_address", &n, &mut e.mac_address)?;
-        util::deserialize_node("domain_name", &n, &mut e.domain_name)?;
-        util::deserialize_node("ip_addr", &n, &mut e.ip_addr)?;
-        util::deserialize_node("p_vendor", &n, &mut e.p_vendor)?;
-        util::deserialize_node("p_model", &n, &mut e.p_model)?;
-        util::deserialize_node("os_name", &n, &mut e.os_name)?;
-        util::deserialize_node("os_version", &n, &mut e.os_version)?;
-        util::deserialize_node("p_features", &n, &mut e.p_features)?;
-        util::deserialize_node("timezone", &n, &mut e.tz_shift)?;
-        util::deserialize_node("p_ncpus", &n, &mut e.p_ncpus)?;
-        util::deserialize_node("m_nbytes", &n, &mut e.m_nbytes)?;
-        util::deserialize_node("m_cache", &n, &mut e.m_cache)?;
-        util::deserialize_node("m_swap", &n, &mut e.m_swap)?;
-        util::deserialize_node("d_total", &n, &mut e.d_total)?;
-        util::deserialize_node("d_free", &n, &mut e.d_free)?;
+        v.host_cpid.unmarshal("host_cpid", &node)?;
+        v.product_name.unmarshal("product_name", &node)?;
+        v.mac_address.unmarshal("mac_address", &node)?;
+        v.domain_name.unmarshal("domain_name", &node)?;
+        v.ip_addr.unmarshal("ip_addr", &node)?;
+        v.p_vendor.unmarshal("p_vendor", &node)?;
+        v.p_model.unmarshal("p_model", &node)?;
+        v.os_name.unmarshal("os_name", &node)?;
+        v.os_version.unmarshal("os_version", &node)?;
+        v.p_features.unmarshal("p_features", &node)?;
+        v.serialnum.unmarshal("serialnum", &node)?;
+        v.tz_shift.unmarshal("timezone", &node)?;
+        v.p_ncpus.unmarshal("p_ncpus", &node)?;
+        v.m_nbytes.unmarshal("m_nbytes", &node)?;
+        v.m_cache.unmarshal("m_cache", &node)?;
+        v.m_swap.unmarshal("m_swap", &node)?;
+        v.d_total.unmarshal("d_total", &node)?;
+        v.d_free.unmarshal("d_free", &node)?;
+
+        Ok(v)
     }
-    Ok(e)
 }
-//}
