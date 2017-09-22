@@ -6,19 +6,23 @@ extern crate error_chain;
 extern crate serde;
 
 mod app;
+mod cc_config;
 mod common;
 mod constants;
+mod coproc;
 mod errors;
+mod file_names;
 mod hostinfo;
 mod messages;
 mod process;
+mod project_init;
 mod projects;
 mod rpc;
 mod state;
 mod util;
 mod workunit;
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::str;
 
 fn launch_service_threads(context: &state::Context<state::ClientState>) {

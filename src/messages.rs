@@ -4,6 +4,7 @@ extern crate treexml_util;
 
 use std::sync::{Arc, RwLock};
 use std::fmt::Display;
+use self::treexml_util::{make_tree_element, make_text_element, make_cdata_element};
 
 use common;
 
@@ -17,19 +18,18 @@ pub struct Message {
 
 impl<'a> From<&'a Message> for treexml::Element {
     fn from(v: &Message) -> treexml::Element {
-        treexml::Element {
-            name: "msg".into(),
-            children: vec![
-                treexml_util::serialize_node(
+        make_tree_element(
+            "msg",
+            vec![
+                make_text_element(
                     "project",
                     v.project_name.as_ref().or(Some(&"".into())).unwrap()
                 ),
-                treexml_util::serialize_node("pri", &u8::from(v.priority.clone())),
-                treexml_util::serialize_cdata("body", &v.body),
-                treexml_util::serialize_node("time", &v.timestamp.timestamp()),
+                make_text_element("pri", &u8::from(v.priority.clone())),
+                make_cdata_element("body", &v.body),
+                make_text_element("time", &v.timestamp.timestamp()),
             ],
-            ..Default::default()
-        }
+        )
     }
 }
 
@@ -55,20 +55,40 @@ pub trait Logger {
     fn len(&self) -> usize;
     fn get(&self, start: usize) -> Vec<Message>;
 
-    fn to_xml(&self, seqno: Option<usize>) -> treexml::ElementBuilder {
-        let mut out = treexml::Element::new("msgs");
-        out.children = self.get(seqno.or(Some(1)).unwrap())
-            .into_iter()
-            .enumerate()
-            .map(|(i, msg)| {
-                let mut e = treexml::Element::from(&msg);
-                e.children.push(
-                    treexml_util::serialize_node("seqno", &(i + 1)),
-                );
-                e
-            })
-            .collect();
-        out.into()
+    fn to_xml(&self, seqno: Option<usize>) -> treexml::Element {
+        make_tree_element(
+            "msgs",
+            self.get(seqno.or(Some(1)).unwrap())
+                .into_iter()
+                .enumerate()
+                .map(|(i, msg)| {
+                    let mut e = treexml::Element::from(&msg);
+                    e.children.push(make_text_element("seqno", &(i + 1)));
+                    e
+                })
+                .collect(),
+        )
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DummyLogger {}
+
+impl Logger for DummyLogger {
+    fn insert(
+        &self,
+        _: Option<&common::ProjAm>,
+        _: common::MessagePriority,
+        _: common::Time,
+        _: &str,
+    ) {
+    }
+    fn cleanup(&self) {}
+    fn len(&self) -> usize {
+        0
+    }
+    fn get(&self, start: usize) -> Vec<Message> {
+        vec![]
     }
 }
 

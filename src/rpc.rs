@@ -20,6 +20,7 @@ use self::futures::{future, Future, BoxFuture};
 use self::tokio_io::{AsyncRead, AsyncWrite};
 use self::tokio_io::codec::{Decoder, Encoder, Framed};
 use self::tokio_service::Service;
+use self::treexml_util::Unmarshaller;
 use self::bytes::BytesMut;
 use self::crypto::digest::Digest;
 use self::crypto::md5::Md5;
@@ -29,6 +30,7 @@ use common::ProjAm;
 
 use std::io;
 use std::sync::{Arc, RwLock};
+use self::treexml_util::{make_tree_element, make_text_element, make_cdata_element};
 
 pub struct RPCCodec;
 
@@ -139,24 +141,18 @@ impl RpcService {
     fn process_request(&self, v: &treexml::Element) -> Option<treexml::Element> {
         match &*v.name {
             "get_message_count" => {
-                Some(
-                    treexml::ElementBuilder::new("seqno")
-                        .text(format!(
-                            "{}",
-                            self.context.await(
-                                move |state| state.unwrap().messages.len(),
-                            )
-                        ))
-                        .element(),
-                )
+                Some(make_text_element(
+                    "seqno",
+                    self.context.await(
+                        move |state| state.unwrap().messages.len(),
+                    ),
+                ))
             }
             "get_messages" => {
-                let seqno = v.find_value("seqno").unwrap_or(None);
-                Some(
-                    self.context
-                        .await(move |state| state.unwrap().messages.to_xml(seqno))
-                        .element(),
-                )
+                let seqno = treexml_util::find_value("seqno", &v).unwrap_or(None);
+                Some(self.context.await(move |state| {
+                    state.unwrap().messages.to_xml(seqno)
+                }))
             }
             "get_notices" => Some(treexml::Element::new("notices")),
             "get_state" => {
@@ -177,9 +173,9 @@ impl RpcService {
                                 ) {
                                     Err(_) => None,
                                     Ok(doc) => {
-                                        let mut e = treexml::Element::new("projects");
-                                        e.children = doc.root.unwrap().children;
-                                        Some(e)
+                                        Some(
+                                            make_tree_element("projects", doc.root.unwrap().children),
+                                        )
                                     }
                                 }
                             }
@@ -189,48 +185,73 @@ impl RpcService {
             }
             "get_disk_usage" => {
                 Some({
-                    let mut e = treexml::Element::new("disk_usage_summary");
-                    e.children = self.context.await(|s| {
-                        let state = s.unwrap();
+                    make_tree_element(
+                        "disk_usage_summary",
+                        self.context.await(|s| {
+                            let state = s.unwrap();
 
-                        let mut out = Vec::new();
-                        out.append(&mut state
-                            .projects
-                            .data
-                            .iter()
-                            .map(|proj| {
-                                treexml::Element {
-                                    name: "project".into(),
-                                    children: vec![
-                                        treexml_util::serialize_node(
-                                            "master_url",
-                                            proj.master_url()
-                                        ),
-                                        treexml_util::serialize_node(
-                                            "disk_usage",
-                                            proj.disk_usage
-                                        ),
-                                    ],
-                                    ..Default::default()
-                                }
-                            })
-                            .collect());
+                            let mut out = Vec::new();
+                            out.append(&mut state
+                                .projects
+                                .data
+                                .iter()
+                                .map(|proj| {
+                                    treexml::Element {
+                                        name: "project".into(),
+                                        children: vec![
+                                            make_text_element(
+                                                "master_url",
+                                                proj.master_url()
+                                            ),
+                                            make_text_element(
+                                                "disk_usage",
+                                                proj.disk_usage
+                                            ),
+                                        ],
+                                        ..Default::default()
+                                    }
+                                })
+                                .collect());
 
-                        out.append(&mut vec![
-                            treexml_util::serialize_node(
-                                "d_total",
-                                &state.host_info.d_total
-                            ),
-                            treexml_util::serialize_node(
-                                "d_free",
-                                &state.host_info.d_free
-                            ),
-                        ]);
+                            out.append(&mut vec![
+                                make_text_element(
+                                    "d_total",
+                                    &state.host_info.d_total
+                                ),
+                                make_text_element(
+                                    "d_free",
+                                    &state.host_info.d_free
+                                ),
+                            ]);
 
-                        out
-                    });
+                            out
+                        }),
+                    )
+                })
+            }
+            "project_attach" => {
+                let mut authenticator = String::new();
+                let mut url = String::new();
+                let mut project_name = String::new();
+                let mut use_config_file = false;
 
-                    e
+                for child in &v.children {
+                    authenticator.unmarshal("authenticator", &child);
+                    url.unmarshal("url", &child);
+                    project_name.unmarshal("project_name", &child);
+                    use_config_file.unmarshal("use_config_file", &child);
+                }
+
+                self.context.await(move |s| {
+                    let state = s.unwrap();
+                    if use_config_file {
+                        if state.project_init.url.is_empty() {
+                            return Some(make_text_element("error", "Missing URL"));
+                        }
+
+                    }
+
+                    Some(treexml::Element::new("success"))
                 })
             }
             _ => None,
@@ -247,27 +268,23 @@ impl Service for RpcService {
 
     fn call(&self, full_request: Self::Request) -> Self::Future {
         let rsp_ok = |v: Option<treexml::Element>| {
-            future::ok(
-                treexml::ElementBuilder::new("boinc_gui_rpc_reply")
-                    .children(
-                        match v {
-                            Some(v) => vec![v.into()],
-                            None => vec![],
-                        }.iter_mut()
-                            .collect(),
-                    )
-                    .element(),
-            ).boxed()
+            future::ok(make_tree_element(
+                "boinc_gui_rpc_reply",
+                match v {
+                    Some(v) => vec![v.into()],
+                    None => vec![],
+                },
+            )).boxed()
         };
         let rsp_err = |v| future::err(v).boxed();
 
         let unauthorize = |s: &mut AuthState| {
             *s = AuthState::Unauthorized;
-            rsp_ok(Some(treexml::ElementBuilder::new("unauthorized").element()))
+            rsp_ok(Some(treexml::Element::new("unauthorized")))
         };
         let authorize = |s: &mut AuthState| {
             *s = AuthState::Ready;
-            rsp_ok(Some(treexml::ElementBuilder::new("authorized").element()))
+            rsp_ok(Some(treexml::Element::new("authorized")))
         };
 
         let mut s = self.conn_status.write().unwrap();
@@ -287,14 +304,13 @@ impl Service for RpcService {
                                         .as_secs()
                                 );
                                 *s = AuthState::ChallengeSent(nonce.clone());
-                                let mut v = treexml::ElementBuilder::new("nonce");
-                                v.text(nonce.clone());
+                                let v = make_text_element("nonce", &nonce);
                                 println!(
                                     "Salted hash must be {}",
                                     self.salted_hash(&nonce).unwrap()
                                 );
 
-                                rsp_ok(Some(v.element()))
+                                rsp_ok(Some(v))
                             }
                             &None => authorize(&mut *s),
                         }
@@ -303,7 +319,7 @@ impl Service for RpcService {
                     }
                 }
                 AuthState::ChallengeSent(ref nonce) => {
-                    match treexml::Element::find_value::<String>(&req, "nonce_hash") {
+                    match treexml_util::find_value::<String>("nonce_hash", &req) {
                         Ok(opt_response) => {
                             match opt_response {
                                 Some(response) => {

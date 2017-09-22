@@ -12,11 +12,16 @@ error_chain! {
     }
     foreign_links {
         StringConversionError(std::string::FromUtf8Error);
+        IOError(std::io::Error);
     }
     errors {
         ConnectError(t: String) {
             description(""),
             display("{}", t),
+        }
+        UserPermissionError(t: String) {
+            description("action is not allowed by user"),
+            display("action is not allowed by user: {}", &t),
         }
         //DataParseError(_: String) {}
         //InvalidPasswordError(_: String) {}
@@ -24,8 +29,14 @@ error_chain! {
         //NullError(_: String) {}
         //NetworkError(_: String) {}
         //StatusError(_: i32) {}
-        //AuthError(_: String) {}
-        //InvalidURLError(_: String) {}
-        //AlreadyAttachedError(_: String) {}
+        AuthError(t: String) {
+            description("authentication error"),
+            display("authentication error"),
+        }
+        InvalidURLError(t: String) {
+            description("invalid URL"),
+            display("invalid URL: {}", &t),
+        }
+        AlreadyAttachedError(t: String) {}
     }
 }

@@ -6,7 +6,32 @@ use std::sync::{Arc, Mutex};
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
 pub type ClockSource = Arc<Fn() -> Time + Sync + Send>;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RpcReason {
+    UserRequest,
+    ResultsDue,
+    NeedWork,
+    TrickleUp,
+    AccountManagerRequest,
+    Init,
+    ProjectRequest,
+}
+
+impl From<RpcReason> for u8 {
+    fn from(v: RpcReason) -> u8 {
+        match v {
+            RpcReason::UserRequest => 1,
+            RpcReason::ResultsDue => 2,
+            RpcReason::NeedWork => 3,
+            RpcReason::TrickleUp => 4,
+            RpcReason::AccountManagerRequest => 5,
+            RpcReason::Init => 6,
+            RpcReason::ProjectRequest => 7,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MessagePriority {
     Debug,
     Info,
