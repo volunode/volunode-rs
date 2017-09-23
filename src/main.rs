@@ -5,6 +5,7 @@ extern crate error_chain;
 #[macro_use]
 extern crate serde;
 
+mod acct_setup;
 mod app;
 mod cc_config;
 mod common;

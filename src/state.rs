@@ -2,6 +2,7 @@ extern crate chan;
 extern crate std;
 extern crate treexml;
 
+use acct_setup;
 use cc_config;
 use common;
 use constants;
@@ -154,6 +155,7 @@ pub struct ClientState {
     pub host_info: hostinfo::HostInfo,
     pub projects: projects::Projects,
 
+    pub project_attach: acct_setup::ProjectAttach,
     pub project_init: project_init::ProjectInit,
 }
 
