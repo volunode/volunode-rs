@@ -1,5 +1,7 @@
 extern crate std;
 
+use errors;
+
 /// Represents the contents of project_init.xml, specifying an account to attach to initially
 #[derive(Debug)]
 pub struct ProjectInit {
@@ -11,4 +13,10 @@ pub struct ProjectInit {
     pub setup_cookie: Vec<u8>,
 
     pub embedded: bool,
+}
+
+impl ProjectInit {
+    pub fn remove(&self) -> Result<(), errors::Error> {
+        Ok(())
+    }
 }

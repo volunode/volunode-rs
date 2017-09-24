@@ -19,10 +19,7 @@ error_chain! {
             description(""),
             display("{}", t),
         }
-        UserPermissionError(t: String) {
-            description("action is not allowed by user"),
-            display("action is not allowed by user: {}", &t),
-        }
+        AlreadyAttachedError(t: String) {}
         //DataParseError(_: String) {}
         //InvalidPasswordError(_: String) {}
         //DaemonError(_: String) {}
@@ -37,6 +34,21 @@ error_chain! {
             description("invalid URL"),
             display("invalid URL: {}", &t),
         }
-        AlreadyAttachedError(t: String) {}
+        UserPermissionError(t: String) {
+            description("action is not allowed by user"),
+            display("action is not allowed by user: {}", &t),
+        }
+    }
+}
+
+impl<'a> From<&'a Error> for i64 {
+    fn from(v: &Error) -> i64 {
+        match v.kind() {
+            &ErrorKind::AlreadyAttachedError(_) => -130,
+            &ErrorKind::AuthError(_) => -155,
+            &ErrorKind::InvalidURLError(_) => -189,
+            &ErrorKind::UserPermissionError(_) => -201,
+            _ => -1,
+        }
     }
 }

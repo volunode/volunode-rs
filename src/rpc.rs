@@ -1,9 +1,10 @@
+extern crate std;
+
 extern crate bytes;
 extern crate chan;
 extern crate crypto;
 extern crate futures;
 extern crate futures_cpupool;
-extern crate std;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate tokio_proto;
@@ -11,9 +12,11 @@ extern crate tokio_service;
 extern crate treexml;
 extern crate treexml_util;
 
+use acct_setup;
 use common;
 use constants;
 use messages;
+use rpc_handlers as handlers;
 use state;
 
 use self::futures::{future, Future, BoxFuture};
@@ -31,6 +34,8 @@ use common::ProjAm;
 use std::io;
 use std::sync::{Arc, RwLock};
 use self::treexml_util::{make_tree_element, make_text_element, make_cdata_element};
+
+use self::handlers::H;
 
 pub struct RPCCodec;
 
@@ -139,123 +144,24 @@ impl RpcService {
     }
 
     fn process_request(&self, v: &treexml::Element) -> Option<treexml::Element> {
-        match &*v.name {
-            "get_message_count" => {
-                Some(make_text_element(
-                    "seqno",
-                    self.context.await(
-                        move |state| state.unwrap().messages.len(),
-                    ),
-                ))
-            }
-            "get_messages" => {
-                let seqno = treexml_util::find_value("seqno", &v).unwrap_or(None);
-                Some(self.context.await(move |state| {
-                    state.unwrap().messages.to_xml(seqno)
-                }))
-            }
-            "get_notices" => Some(treexml::Element::new("notices")),
-            "get_state" => {
-                Some(self.context.await(move |state| {
-                    treexml::Element::from(state.unwrap())
-                }))
-            }
-            "get_all_projects_list" => {
-                match std::fs::File::open(constants::ALL_PROJECTS_LIST_FILENAME) {
-                    Err(_) => None,
-                    Ok(mut file) => {
-                        let mut s = String::new();
-                        match file.read_to_string(&mut s) {
-                            Err(_) => None,
-                            Ok(_) => {
-                                match treexml::Document::parse(
-                                    std::io::Cursor::new(format!("<root>{}</root>", &s)),
-                                ) {
-                                    Err(_) => None,
-                                    Ok(doc) => {
-                                        Some(
-                                            make_tree_element("projects", doc.root.unwrap().children),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            "get_disk_usage" => {
-                Some({
-                    make_tree_element(
-                        "disk_usage_summary",
-                        self.context.await(|s| {
-                            let state = s.unwrap();
+        let h = H {
+            context: &*self.context,
+            incoming: v,
+        };
 
-                            let mut out = Vec::new();
-                            out.append(&mut state
-                                .projects
-                                .data
-                                .iter()
-                                .map(|proj| {
-                                    treexml::Element {
-                                        name: "project".into(),
-                                        children: vec![
-                                            make_text_element(
-                                                "master_url",
-                                                proj.master_url()
-                                            ),
-                                            make_text_element(
-                                                "disk_usage",
-                                                proj.disk_usage
-                                            ),
-                                        ],
-                                        ..Default::default()
-                                    }
-                                })
-                                .collect());
-
-                            out.append(&mut vec![
-                                make_text_element(
-                                    "d_total",
-                                    &state.host_info.d_total
-                                ),
-                                make_text_element(
-                                    "d_free",
-                                    &state.host_info.d_free
-                                ),
-                            ]);
-
-                            out
-                        }),
-                    )
-                })
-            }
-            "project_attach" => {
-                let mut authenticator = String::new();
-                let mut url = String::new();
-                let mut project_name = String::new();
-                let mut use_config_file = false;
-
-                for child in &v.children {
-                    authenticator.unmarshal("authenticator", &child);
-                    url.unmarshal("url", &child);
-                    project_name.unmarshal("project_name", &child);
-                    use_config_file.unmarshal("use_config_file", &child);
-                }
-
-                self.context.await(move |s| {
-                    let state = s.unwrap();
-                    if use_config_file {
-                        if state.project_init.url.is_empty() {
-                            return Some(make_text_element("error", "Missing URL"));
-                        }
-
-                    }
-
-                    Some(treexml::Element::new("success"))
-                })
-            }
-            _ => None,
-        }
+        (match &*v.name {
+             "get_message_count" => H::get_message_count,
+             "get_messages" => H::get_messages,
+             "get_notices" => H::get_notices,
+             "get_state" => H::get_state,
+             "get_all_projects_list" => H::get_all_projects_list,
+             "get_disk_usage" => H::get_disk_usage,
+             "project_attach" => H::project_attach,
+             "project_attach_poll" => H::project_attach_poll,
+             _ => {
+                 return None;
+             }
+         })(&h)
     }
 }
 

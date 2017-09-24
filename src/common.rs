@@ -6,6 +6,10 @@ use std::sync::{Arc, Mutex};
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
 pub type ClockSource = Arc<Fn() -> Time + Sync + Send>;
 
+pub fn system_clock_source() -> ClockSource {
+    Arc::new(|| std::time::SystemTime::now().into())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RpcReason {
     UserRequest,

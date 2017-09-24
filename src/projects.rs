@@ -9,6 +9,7 @@ extern crate uuid;
 use app;
 use common;
 use errors;
+use file_info;
 use file_names;
 use messages;
 
@@ -22,8 +23,9 @@ use self::treexml_util::{make_tree_element, make_text_element};
 pub struct Project {
     _master_url: String,
     _project_name: Option<String>,
-    pub apps: Vec<app::App>,
+    pub apps: HashMap<uuid::Uuid, app::App>,
     pub project_prefs: Option<treexml::Element>,
+    pub file_infos: HashMap<uuid::Uuid, file_info::FileInfo>,
     pub host_venue: String,
     pub scheduler_urls: Vec<String>,
     pub user_name: String,
@@ -147,21 +149,5 @@ impl Projects {
             clock_source: clock_source,
             logger: logger,
         }
-    }
-
-    pub fn find_project<F: FnMut(&Project)>(&self, k: &str, mut f: F) {
-        self.data.iter().map(
-            |proj| if proj.get_project_name() == k {
-                f(proj);
-            },
-        );
-    }
-
-    pub fn find_project_mut<F: FnMut(&mut Project)>(&mut self, k: &str, mut f: F) {
-        self.data.iter_mut().map(
-            |proj| if proj.get_project_name() == k {
-                f(proj);
-            },
-        );
     }
 }

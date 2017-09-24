@@ -16,6 +16,8 @@ use projects;
 use std::io::Write;
 use std::ops::Deref;
 
+use common::ProjAm;
+
 use std::sync::{Arc, RwLock};
 
 pub type ContextData<V> = Arc<RwLock<Option<V>>>;
@@ -149,6 +151,8 @@ impl<V: Send + Sync + 'static> Context<V> {
 }
 
 pub struct ClientState {
+    pub clock_source: common::ClockSource,
+
     pub cc_config: cc_config::CCConfig,
     pub messages: messages::SafeLogger,
 
@@ -194,8 +198,9 @@ impl Default for ClientState {
 impl ClientState {
     pub fn new(messages: messages::SafeLogger) -> Self {
         {
-            let clock_source = Arc::new(move || std::time::SystemTime::now().into());
+            let clock_source = common::system_clock_source();
             let mut v = Self {
+                clock_source: clock_source.clone(),
                 messages: messages.clone(),
                 projects: projects::Projects::new(clock_source.clone(), messages.clone()),
                 ..Default::default()
@@ -245,19 +250,13 @@ impl ClientState {
             bail!(errors::ErrorKind::AuthError(format!("Missing account key")));
         }
 
-        if {
-            let mut found = false;
-            self.projects.find_project(
-                &canonical_master_url,
-                |_| { found = true; },
-            );
-            found
-        }
-        {
-            bail!(errors::ErrorKind::AlreadyAttachedError(format!(
-                "Already attached to project {}",
-                &canonical_master_url
-            )));
+        for p in &self.projects.data {
+            if p.master_url() == canonical_master_url {
+                bail!(errors::ErrorKind::AlreadyAttachedError(format!(
+                    "Already attached to project {}",
+                    &canonical_master_url
+                )));
+            }
         }
 
         let mut project =

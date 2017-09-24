@@ -4,12 +4,12 @@ extern crate uuid;
 
 use std::collections::HashMap;
 
-pub fn insert_unique_item<T>(coll: &mut HashMap<uuid::Uuid, T>, v: T) -> uuid::Uuid {
+pub fn insert_unique<T>(coll: &mut HashMap<uuid::Uuid, T>, v: T) -> (uuid::Uuid, &mut T) {
     loop {
         let k = uuid::Uuid::new(uuid::UuidVersion::Random).unwrap();
         if !coll.contains_key(&k) {
             coll.insert(k.clone(), v);
-            return k;
+            return (k, coll.get_mut(&k).unwrap());
         }
     }
 }
