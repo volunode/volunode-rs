@@ -13,3 +13,7 @@ pub fn insert_unique<T>(coll: &mut HashMap<uuid::Uuid, T>, v: T) -> (uuid::Uuid,
         }
     }
 }
+
+pub fn canonicalize_url(s: &str) -> String {
+    String::from(s).replace("/", "_")
+}
