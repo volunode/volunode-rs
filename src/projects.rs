@@ -16,17 +16,16 @@ use messages;
 
 use common::ProjAm;
 
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use self::treexml_util::{make_tree_element, make_text_element};
 
+/// Split off from Project for mutability reasons.
 #[derive(Default)]
-pub struct Project {
-    _master_url: String,
-    _project_name: Option<String>,
+pub struct ProjectData {
+    pub project_name: Option<String>,
     pub apps: HashMap<uuid::Uuid, app::App>,
     pub project_prefs: Option<treexml::Element>,
-    pub file_infos: HashMap<uuid::Uuid, file_info::FileInfo>,
     pub host_venue: String,
     pub scheduler_urls: Vec<String>,
     pub user_name: String,
@@ -67,37 +66,8 @@ pub struct Project {
     pub dont_request_more_work: bool,
 }
 
-impl common::ProjAm for Project {
-    fn master_url(&self) -> &str {
-        &self._master_url
-    }
 
-    fn project_name(&self) -> Option<&str> {
-        self._project_name.as_ref().map(|s| s.as_str())
-    }
-}
-
-impl<'a> From<&'a Project> for treexml::Element {
-    fn from(v: &Project) -> treexml::Element {
-        make_tree_element(
-            "project",
-            vec![
-                make_text_element("master_url", v.master_url()),
-                make_text_element("project_name", v.get_project_name()),
-            ],
-        )
-    }
-}
-
-impl Project {
-    pub fn new(master_url: String, project_name: Option<String>) -> Project {
-        Project {
-            _master_url: master_url,
-            _project_name: project_name,
-            ..Default::default()
-        }
-    }
-
+impl ProjectData {
     pub fn can_request_work(&self, now: &common::Time) -> bool {
         !(self.suspended_via_gui || self.master_url_fetch_pending ||
               {
@@ -113,21 +83,6 @@ impl Project {
         self.apps.iter_mut().map(|app| {});
     }
 
-    pub fn set_project_name(&mut self, v: Option<String>) {
-        self._project_name = v;
-    }
-
-    pub fn project_dir(&self) -> std::path::PathBuf {
-        let mut v = std::path::PathBuf::new();
-        v.push(file_names::PROJECTS_DIR);
-        v.push(self.master_url());
-        v
-    }
-
-    pub fn make_project_dir(&mut self) -> errors::Result<()> {
-        Ok(())
-    }
-
     pub fn parse_account(&mut self, v: &treexml::Element) -> errors::Result<()> {
         Ok(())
     }
@@ -137,8 +92,71 @@ impl Project {
     }
 }
 
+#[derive(Default)]
+pub struct Project {
+    _master_url: String,
+    pub data: context::Context<ProjectData>,
+}
+
+impl Hash for Project {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self._master_url.hash(state);
+    }
+}
+impl PartialEq for Project {
+    fn eq(&self, other: &Self) -> bool {
+        self._master_url == other._master_url
+    }
+}
+impl Eq for Project {}
+
+impl common::ProjAm for Project {
+    fn master_url(&self) -> String {
+        self._master_url.clone()
+    }
+
+    fn project_name(&self) -> Option<String> {
+        self.data.await_force(
+            |project| project.project_name.clone(),
+        )
+    }
+}
+
+impl<'a> From<&'a Project> for treexml::Element {
+    fn from(v: &Project) -> treexml::Element {
+        make_tree_element(
+            "project",
+            vec![
+                make_text_element("master_url", v.master_url()),
+                make_text_element("project_name", v.get_project_name()),
+                // TODO: serialize more fields
+            ],
+        )
+    }
+}
+
+impl Project {
+    pub fn new(master_url: String) -> Project {
+        Project {
+            _master_url: master_url,
+            ..Default::default()
+        }
+    }
+
+    pub fn project_dir(&self) -> std::path::PathBuf {
+        let mut v = std::path::PathBuf::new();
+        v.push(file_names::PROJECTS_DIR);
+        v.push(self.master_url());
+        v
+    }
+
+    pub fn make_project_dir(&self) -> errors::Result<()> {
+        Ok(())
+    }
+}
+
 pub struct Projects {
-    pub data: Vec<Project>,
+    pub data: HashSet<Project>,
     clock_source: common::ClockSource,
     logger: messages::SafeLogger,
 }
@@ -146,9 +164,16 @@ pub struct Projects {
 impl Projects {
     pub fn new(clock_source: common::ClockSource, logger: messages::SafeLogger) -> Projects {
         Projects {
-            data: Vec::new(),
+            data: Default::default(),
             clock_source: clock_source,
             logger: logger,
         }
+    }
+
+    pub fn find_by_url(&self, url: &str) -> Option<&Project> {
+        self.data.get(&Project {
+            _master_url: url.to_string(),
+            ..Default::default()
+        })
     }
 }

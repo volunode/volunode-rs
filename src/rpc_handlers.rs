@@ -80,25 +80,23 @@ impl<'a, 'b> H<'a, 'b> {
         Some({
             make_tree_element(
                 "disk_usage_summary",
-                self.context.await(|s| {
-                    let state = s.unwrap();
-
+                self.context.await_force(|state| {
                     let mut out = Vec::new();
-                    out.append(&mut state
-                        .projects
-                        .data
-                        .iter()
-                        .map(|proj| {
+                    for proj in &state.projects.data {
+                        out.push({
                             treexml::Element {
                                 name: "project".into(),
                                 children: vec![
                                     make_text_element("master_url", proj.master_url()),
-                                    make_text_element("disk_usage", proj.disk_usage),
+                                    make_text_element(
+                                        "disk_usage",
+                                        proj.data.await_force(|project| project.disk_usage)
+                                    ),
                                 ],
                                 ..Default::default()
                             }
-                        })
-                        .collect());
+                        });
+                    }
 
                     out.append(&mut vec![
                         make_text_element(

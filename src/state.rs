@@ -1,23 +1,28 @@
 extern crate chan;
 extern crate std;
 extern crate treexml;
+extern crate uuid;
 
 use acct_setup;
+use app;
 use cc_config;
 use common;
 use constants;
 use errors;
+use file_info;
 use file_names;
 use hostinfo;
 use messages;
 use project_init;
 use projects;
+use util;
 
 use std::io::Write;
 use std::ops::Deref;
 
 use common::ProjAm;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct ClientState {
@@ -28,6 +33,7 @@ pub struct ClientState {
 
     pub host_info: hostinfo::HostInfo,
     pub projects: projects::Projects,
+    pub file_infos: HashMap<uuid::Uuid, file_info::FileInfo>,
 
     pub project_attach: acct_setup::ProjectAttach,
     pub project_init: project_init::ProjectInit,
@@ -65,6 +71,12 @@ impl Default for ClientState {
     }
 }
 
+struct AppInfo {
+    file_infos: Vec<file_info::FileInfo>,
+    apps: Vec<app::App>,
+    app_versions: Vec<app::AppVersion>,
+}
+
 impl ClientState {
     pub fn new(messages: messages::SafeLogger) -> Self {
         {
@@ -86,7 +98,7 @@ impl ClientState {
         Ok(())
     }
 
-    pub fn parse_app_info(&mut self, _: &treexml::Element) -> errors::Result<()> {
+    pub fn parse_app_info(&mut self, node: &treexml::Element) -> errors::Result<()> {
         Ok(())
     }
 
@@ -107,7 +119,7 @@ impl ClientState {
             ));
         }
 
-        let canonical_master_url = url.to_string();
+        let canonical_master_url = util::canonicalize_url(url);
 
         if false {
             bail!(errors::ErrorKind::InvalidURLError(
@@ -115,57 +127,71 @@ impl ClientState {
             ));
         }
 
-        let auth = _auth.trim();
+        let auth = _auth.trim().to_string();
         if auth.is_empty() {
             bail!(errors::ErrorKind::AuthError(format!("Missing account key")));
         }
 
-        for p in &self.projects.data {
-            if p.master_url() == canonical_master_url {
-                bail!(errors::ErrorKind::AlreadyAttachedError(format!(
-                    "Already attached to project {}",
-                    &canonical_master_url
-                )));
-            }
+        if self.projects.find_by_url(&canonical_master_url).is_some() {
+            bail!(errors::ErrorKind::AlreadyAttachedError(format!(
+                "Already attached to project {}",
+                &canonical_master_url
+            )));
         }
 
-        let mut project =
-            projects::Project::new(canonical_master_url.to_string(), Some(project_name.into()));
+        let mut proj = projects::Project::new(canonical_master_url.to_string());
 
-        project.authenticator = auth.into();
-        project.attached_via_acct_mgr = attached_via_acct_mgr;
+        let project_dir = proj.project_dir();
 
-        project.write_account_file()?;
+        proj.data.await_mut_force({
+            let p_name = Arc::new(project_name.to_string());
+            let p_auth = Arc::new(auth.to_string());
+            let attached_via_acct_mgr = attached_via_acct_mgr;
+            let canonical_master_url = canonical_master_url.clone();
+            move |project| -> errors::Result<()> {
+                project.project_name = Some((*p_name).clone());
+                project.authenticator = (*p_auth).clone();
+                project.attached_via_acct_mgr = attached_via_acct_mgr;
 
-        project.parse_account(
-            &treexml::Document::parse(std::fs::File::open(
-                file_names::account_filename(&canonical_master_url),
-            )?)?
-                .root
-                .unwrap(),
-        )?;
+                project.write_account_file()?;
+
+                project.parse_account(
+                    &treexml::Document::parse(std::fs::File::open(
+                        file_names::account_filename(&canonical_master_url),
+                    )?)?
+                        .root
+                        .unwrap(),
+                )?;
+
+                Ok(())
+            }
+        })?;
 
         let path = std::path::PathBuf::from(&format!(
             "{}/{}",
-            project.project_dir().display(),
+            project_dir.display(),
             file_names::APP_INFO_FILE_NAME
         ));
         if path.exists() {
-            project.anonymous_platform = true;
+            proj.data.await_mut_force(
+                |project| project.anonymous_platform = true,
+            );
             std::fs::File::open(path).map(|f| {
                 treexml::Document::parse(f).map(|doc| {
                     doc.root.map(|e| { self.parse_app_info(&e); });
                 });
             });
         } else {
-            std::fs::remove_dir_all(project.project_dir());
+            std::fs::remove_dir_all(project_dir);
         }
 
-        project.make_project_dir()?;
+        proj.make_project_dir()?;
 
-        project.sched_rpc_pending = Some(common::RpcReason::Init);
-        self.projects.data.push(project);
-        self.sort_projects_by_name();
+        proj.data.await_mut_force(|project| {
+            project.sched_rpc_pending = Some(common::RpcReason::Init);
+        });
+
+        assert!(self.projects.data.insert(proj));
 
         self.set_client_state_dirty("Add project");
 
