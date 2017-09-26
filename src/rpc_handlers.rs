@@ -5,6 +5,7 @@ extern crate treexml_util;
 
 use common;
 use constants;
+use context;
 use state;
 
 use self::std::io::Read;
@@ -20,7 +21,7 @@ fn make_error(v: &str) -> treexml::Element {
 
 /// Contains handlers to RPC calls
 pub struct H<'a, 'b> {
-    pub context: &'a state::Context<state::ClientState>,
+    pub context: &'a context::Context<state::ClientState>,
     pub incoming: &'b treexml::Element,
 }
 

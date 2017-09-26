@@ -11,6 +11,7 @@ mod cc_config;
 mod cert_sig;
 mod common;
 mod constants;
+mod context;
 mod coproc;
 mod errors;
 mod file_info;
@@ -29,7 +30,7 @@ mod workunit;
 use std::sync::Arc;
 use std::str;
 
-fn launch_service_threads(context: &state::Context<state::ClientState>) {
+fn launch_service_threads(context: &context::Context<state::ClientState>) {
     context
         .compose()
         .bind_rwlock(|r, _| loop {
@@ -93,7 +94,7 @@ fn launch_service_threads(context: &state::Context<state::ClientState>) {
 }
 
 fn main() {
-    let context = Arc::new(state::Context::new(state::ClientState::new(
+    let context = Arc::new(context::Context::new(state::ClientState::new(
         Arc::new(messages::StandardLogger::default()),
     )));
     let addr = format!(

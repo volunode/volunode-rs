@@ -8,6 +8,7 @@ extern crate uuid;
 
 use app;
 use common;
+use context;
 use errors;
 use file_info;
 use file_names;

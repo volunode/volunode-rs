@@ -15,6 +15,7 @@ extern crate treexml_util;
 use acct_setup;
 use common;
 use constants;
+use context;
 use messages;
 use rpc_handlers as handlers;
 use state;
@@ -114,7 +115,7 @@ enum AuthState {
 struct RpcService {
     cpu_pool: futures_cpupool::CpuPool,
 
-    context: Arc<state::Context<state::ClientState>>,
+    context: Arc<context::Context<state::ClientState>>,
     conn_status: Arc<RwLock<AuthState>>,
 
     rpcpass: Option<String>,
@@ -122,7 +123,7 @@ struct RpcService {
 
 impl RpcService {
     fn new(
-        c: Arc<state::Context<state::ClientState>>,
+        c: Arc<context::Context<state::ClientState>>,
         cpu_pool: futures_cpupool::CpuPool,
         pass: Option<String>,
     ) -> RpcService {
@@ -256,7 +257,7 @@ impl Service for RpcService {
 }
 
 pub fn start_rpc_server(
-    context: Arc<state::Context<state::ClientState>>,
+    context: Arc<context::Context<state::ClientState>>,
     addr: std::net::SocketAddr,
     password: Option<String>,
 ) -> () {
