@@ -4,7 +4,6 @@ extern crate treexml;
 extern crate uuid;
 
 use acct_setup;
-use app;
 use cc_config;
 use common;
 use constants;
@@ -20,8 +19,6 @@ use util;
 use std::io::Write;
 use std::ops::Deref;
 
-use common::ProjAm;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -36,7 +33,7 @@ pub struct ClientState {
     pub file_infos: HashMap<uuid::Uuid, file_info::FileInfo>,
 
     pub project_attach: acct_setup::ProjectAttach,
-    pub project_init: project_init::ProjectInit,
+    pub project_init: Option<project_init::ProjectInit>,
 }
 
 impl<'a> From<&'a ClientState> for treexml::Element {
@@ -64,32 +61,32 @@ impl<'a> From<&'a ClientState> for treexml::Element {
 
 impl Default for ClientState {
     fn default() -> Self {
+        let clock_source = common::system_clock_source();
+        let messages: messages::SafeLogger = Arc::new(messages::DummyLogger::default());
         Self {
-            messages: Arc::new(messages::DummyLogger::default()),
-            ..Default::default()
+            clock_source: Arc::clone(&clock_source),
+            messages: Arc::clone(&messages),
+            projects: projects::Projects::new(Arc::clone(&clock_source), Arc::clone(&messages)),
+
+            cc_config: Default::default(),
+            host_info: Default::default(),
+            file_infos: Default::default(),
+            project_attach: Default::default(),
+            project_init: Default::default(),
         }
     }
 }
 
-struct AppInfo {
-    file_infos: Vec<file_info::FileInfo>,
-    apps: Vec<app::App>,
-    app_versions: Vec<app::AppVersion>,
-}
-
 impl ClientState {
     pub fn new(messages: messages::SafeLogger) -> Self {
-        {
-            let clock_source = common::system_clock_source();
-            let mut v = Self {
-                clock_source: clock_source.clone(),
-                messages: messages.clone(),
-                projects: projects::Projects::new(clock_source.clone(), messages.clone()),
-                ..Default::default()
-            };
-
-            v
+        let clock_source = common::system_clock_source();
+        Self {
+            clock_source: Arc::clone(&clock_source),
+            messages: Arc::clone(&messages),
+            projects: projects::Projects::new(Arc::clone(&clock_source), Arc::clone(&messages)),
+            ..Default::default()
         }
+
     }
 
     pub fn write_state_file(&self) -> Result<(), std::io::Error> {
@@ -98,7 +95,27 @@ impl ClientState {
         Ok(())
     }
 
-    pub fn parse_app_info(&mut self, node: &treexml::Element) -> errors::Result<()> {
+    pub fn parse_app_info(
+        &mut self,
+        project: &projects::Project,
+        root: &treexml::Element,
+    ) -> errors::Result<()> {
+        for node in &root.children {
+            match node.name.as_str() {
+                "file" | "file_info" => {
+                    let fi = file_info::FileInfo::from(node);
+                    if !fi.download_urls.is_empty() || !fi.upload_urls.is_empty() {
+                        bail!(errors::ErrorKind::XMLError("".into()));
+                    }
+
+                    let _ = project;
+
+                    util::insert_unique(&mut self.file_infos, fi);
+                }
+                _ => {}
+            }
+        }
+
         Ok(())
     }
 
@@ -115,7 +132,7 @@ impl ClientState {
     ) -> errors::Result<()> {
         if self.cc_config.disallow_attach {
             bail!(errors::ErrorKind::UserPermissionError(
-                format!("Adding projects is not allowed"),
+                "Adding projects is not allowed".into(),
             ));
         }
 
@@ -123,13 +140,13 @@ impl ClientState {
 
         if false {
             bail!(errors::ErrorKind::InvalidURLError(
-                format!("Invalid master URL"),
+                "Invalid master URL".into(),
             ));
         }
 
         let auth = _auth.trim().to_string();
         if auth.is_empty() {
-            bail!(errors::ErrorKind::AuthError(format!("Missing account key")));
+            bail!(errors::ErrorKind::AuthError("Missing account key".into()));
         }
 
         if self.projects.find_by_url(&canonical_master_url).is_some() {
@@ -139,7 +156,7 @@ impl ClientState {
             )));
         }
 
-        let mut proj = projects::Project::new(canonical_master_url.to_string());
+        let proj = projects::Project::new(canonical_master_url.to_string());
 
         let project_dir = proj.project_dir();
 
@@ -176,13 +193,15 @@ impl ClientState {
             proj.data.await_mut_force(
                 |project| project.anonymous_platform = true,
             );
-            std::fs::File::open(path).map(|f| {
-                treexml::Document::parse(f).map(|doc| {
-                    doc.root.map(|e| { self.parse_app_info(&e); });
+            let _ = std::fs::File::open(path).map(|f| {
+                let _ = treexml::Document::parse(f).map(|doc| {
+                    doc.root.map(
+                        |e| { let _ = self.parse_app_info(&proj, &e); },
+                    );
                 });
             });
         } else {
-            std::fs::remove_dir_all(project_dir);
+            let _ = std::fs::remove_dir_all(project_dir);
         }
 
         proj.make_project_dir()?;

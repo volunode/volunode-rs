@@ -28,7 +28,6 @@ mod util;
 mod workunit;
 
 use std::sync::Arc;
-use std::str;
 
 fn launch_service_threads(context: &context::Context<state::ClientState>) {
     context
@@ -108,13 +107,13 @@ fn main() {
     let password = Some("mypass".into());
 
     std::thread::spawn({
-        let context = context.clone();
+        let context = Arc::clone(&context);
         move || rpc::start_rpc_server(context, addr, password)
     });
 
-    let p = std::env::var("TEST_IPC").map(|path| {
+    let _ = std::env::var("TEST_IPC").map(|path| {
         process::Process::new(&path, "./boinc_mmap_file", {
-            let context = context.clone();
+            let context = Arc::clone(&context);
             let path = path.clone();
             move |msg| {
                 context.run({

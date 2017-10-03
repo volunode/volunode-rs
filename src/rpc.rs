@@ -12,29 +12,22 @@ extern crate tokio_service;
 extern crate treexml;
 extern crate treexml_util;
 
-use acct_setup;
 use common;
-use constants;
 use context;
-use messages;
 use rpc_handlers as handlers;
 use state;
 
-use self::futures::{future, Future, BoxFuture};
+use self::futures::{future, BoxFuture};
 use self::tokio_io::{AsyncRead, AsyncWrite};
 use self::tokio_io::codec::{Decoder, Encoder, Framed};
 use self::tokio_service::Service;
-use self::treexml_util::Unmarshaller;
 use self::bytes::BytesMut;
 use self::crypto::digest::Digest;
 use self::crypto::md5::Md5;
-use self::io::Read;
-
-use common::ProjAm;
 
 use std::io;
 use std::sync::{Arc, RwLock};
-use self::treexml_util::{make_tree_element, make_text_element, make_cdata_element};
+use self::treexml_util::{make_tree_element, make_text_element};
 
 use self::handlers::H;
 
@@ -175,15 +168,15 @@ impl Service for RpcService {
 
     fn call(&self, full_request: Self::Request) -> Self::Future {
         let rsp_ok = |v: Option<treexml::Element>| {
-            future::ok(make_tree_element(
+            Box::new(future::ok(make_tree_element(
                 "boinc_gui_rpc_reply",
                 match v {
                     Some(v) => vec![v.into()],
                     None => vec![],
                 },
-            )).boxed()
+            )))
         };
-        let rsp_err = |v| future::err(v).boxed();
+        let rsp_err = |v| Box::new(future::err(v));
 
         let unauthorize = |s: &mut AuthState| {
             *s = AuthState::Unauthorized;
@@ -196,13 +189,13 @@ impl Service for RpcService {
 
         let mut s = self.conn_status.write().unwrap();
         let current_status = (*s).clone();
-        if full_request.name == "boinc_gui_rpc_request" && full_request.children.len() > 0 {
-            let req = full_request.children.get(0).unwrap();
+        if full_request.name == "boinc_gui_rpc_request" && !full_request.children.is_empty() {
+            let req = &full_request.children[0];
             match current_status {
                 AuthState::New => {
                     if req.name == "auth1" {
-                        match &self.rpcpass {
-                            &Some(_) => {
+                        match self.rpcpass {
+                            Some(_) => {
                                 let nonce = format!(
                                     "{}",
                                     std::time::SystemTime::now()
@@ -219,14 +212,14 @@ impl Service for RpcService {
 
                                 rsp_ok(Some(v))
                             }
-                            &None => authorize(&mut *s),
+                            None => authorize(&mut *s),
                         }
                     } else {
                         unauthorize(&mut *s)
                     }
                 }
                 AuthState::ChallengeSent(ref nonce) => {
-                    match treexml_util::find_value::<String>("nonce_hash", &req) {
+                    match treexml_util::find_value::<String>("nonce_hash", req) {
                         Ok(opt_response) => {
                             match opt_response {
                                 Some(response) => {
@@ -248,7 +241,7 @@ impl Service for RpcService {
                         "Still banging into closed door",
                     ))
                 }
-                AuthState::Ready => rsp_ok(self.process_request(&req).into()),
+                AuthState::Ready => rsp_ok(self.process_request(req).into()),
             }
         } else {
             rsp_err(io::Error::new(io::ErrorKind::Other, "Invalid request"))
@@ -264,7 +257,7 @@ pub fn start_rpc_server(
     let server = tokio_proto::TcpServer::new(RPCProto, addr);
     let thread_pool = futures_cpupool::CpuPool::new(10);
     context.run({
-        let addr = addr.clone();
+        let addr = addr;
         move |state| {
             state.unwrap().messages.insert(
                 None,
@@ -275,16 +268,15 @@ pub fn start_rpc_server(
         }
     });
     server.with_handle({
-        let context = context.clone();
-        let password = password.clone();
+        let context = Arc::clone(&context);
         let thread_pool = thread_pool.clone();
         move |_| {
-            let context = context.clone();
+            let context = Arc::clone(&context);
             let password = password.clone();
             let thread_pool = thread_pool.clone();
             move || {
                 Ok(RpcService::new(
-                    context.clone(),
+                    Arc::clone(&context),
                     thread_pool.clone(),
                     password.clone(),
                 ))

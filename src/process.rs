@@ -1,10 +1,19 @@
 extern crate std;
+extern crate uuid;
+
+use errors;
 
 use std::io::prelude::*;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, RwLock, atomic, mpsc};
 use std::thread;
 use std::io::BufReader;
+
+use self::uuid::*;
+
+use app::*;
+use errors::*;
+use workunit::*;
 
 #[derive(Debug)]
 pub struct Process {
@@ -32,8 +41,8 @@ impl Process {
         let process_manager = std::thread::spawn({
             let procname = procname.to_string();
             let args = args.to_string();
-            let dropping = dropping.clone();
-            let input = input.clone();
+            let dropping = Arc::clone(&dropping);
+            let input = Arc::clone(&input);
             move || {
                 let mut process = None;
                 let mut it: Option<std::io::Lines<BufReader<std::process::ChildStdout>>> = None;
@@ -42,8 +51,8 @@ impl Process {
                     if dropping.load(atomic::Ordering::Relaxed) {
                         break;
                     }
-                    match &mut process {
-                        &mut None => {
+                    match process {
+                        None => {
                             let mut p = Command::new(&procname)
                                 .arg(&args)
                                 .stdin(Stdio::piped())
@@ -55,7 +64,7 @@ impl Process {
                             process = Some(p);
                             *input.write().unwrap() = in_s;
                         }
-                        &mut Some(_) => {
+                        Some(_) => {
                             for line in it.take().unwrap() {
                                 match line {
                                     Ok(v) => {
@@ -63,11 +72,8 @@ impl Process {
                                         std::thread::sleep(std::time::Duration::from_millis(300));
                                     }
                                     Err(err) => {
-                                        match err.kind() {
-                                            std::io::ErrorKind::BrokenPipe => {
-                                                break;
-                                            }
-                                            _ => {}
+                                        if let std::io::ErrorKind::BrokenPipe = err.kind() {
+                                            break;
                                         }
                                     }
                                 }
@@ -90,8 +96,8 @@ impl Process {
     }
 
     pub fn push(&mut self, buf: Vec<u8>) {
-        let input = self.input.clone();
-        let dropping = self.dropping.clone();
+        let input = Arc::clone(&self.input);
+        let dropping = Arc::clone(&self.dropping);
         std::thread::spawn(move || loop {
             match input.write().unwrap().as_mut() {
                 Some(s) => {

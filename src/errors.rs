@@ -7,7 +7,7 @@ extern crate boinc_app_api;
 
 error_chain! {
     links {
-        APIError(boinc_app_api::Error, boinc_app_api::ErrorKind);
+        APIError(boinc_app_api::errors::Error, boinc_app_api::errors::ErrorKind);
     }
     foreign_links {
         StringConversionError(std::string::FromUtf8Error);

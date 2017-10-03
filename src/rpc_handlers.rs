@@ -13,7 +13,7 @@ use self::treexml_util::Unmarshaller;
 
 use common::ProjAm;
 
-use self::treexml_util::{make_tree_element, make_text_element, make_cdata_element};
+use self::treexml_util::{make_tree_element, make_text_element};
 
 fn make_error(v: &str) -> treexml::Element {
     make_text_element("error", v)
@@ -122,37 +122,47 @@ impl<'a, 'b> H<'a, 'b> {
         let mut use_config_file = false;
 
         for child in &self.incoming.children {
-            authenticator.unmarshal("authenticator", &child);
-            url.unmarshal("url", &child);
-            project_name.unmarshal("project_name", &child);
-            use_config_file.unmarshal("use_config_file", &child);
+            match &*child.name {
+                "authenticator" => {
+                    let _ = authenticator.unmarshal(child);
+                }
+                "url" => {
+                    let _ = url.unmarshal(child);
+                }
+                "project_name" => {
+                    let _ = project_name.unmarshal(child);
+                }
+                "use_config_file" => {
+                    let _ = use_config_file.unmarshal(child);
+                }
+                _ => {}
+            }
         }
 
-        self.context.await_mut(move |s| {
-            let mut state = s.unwrap();
+        self.context.await_mut_force(move |state| {
+            let project_init = state.project_init.take();
+            let (url, authenticator) = match project_init.as_ref() {
+                Some(project_init) => {
+                    if project_init.url.is_empty() {
+                        return Some(make_error("Missing URL"));
+                    }
 
-            let (url, authenticator) = if use_config_file {
-                if state.project_init.url.is_empty() {
-                    return Some(make_error("Missing URL"));
-                }
+                    if project_init.account_key.is_empty() {
+                        return Some(make_error("Missing authenticator"));
+                    }
 
-                if state.project_init.account_key.is_empty() {
-                    return Some(make_error("Missing authenticator"));
+                    (project_init.url.clone(), project_init.account_key.clone())
                 }
+                None => {
+                    if url.is_empty() {
+                        return Some(make_error("Missing URL"));
+                    }
 
-                (
-                    state.project_init.url.clone(),
-                    state.project_init.account_key.clone(),
-                )
-            } else {
-                if url.is_empty() {
-                    return Some(make_error("Missing URL"));
+                    if authenticator.is_empty() {
+                        return Some(make_error("Missing authenticator"));
+                    }
+                    (url.clone(), authenticator.clone())
                 }
-
-                if authenticator.is_empty() {
-                    return Some(make_error("Missing authenticator"));
-                }
-                (url.clone(), authenticator.clone())
             };
 
             for proj in &state.projects.data {
@@ -166,8 +176,8 @@ impl<'a, 'b> H<'a, 'b> {
                 .add_project(&url, &authenticator, &project_name, false)
                 .err();
 
-            if url == state.project_init.url {
-                state.project_init.remove().map_err(|err| {
+            project_init.map(|project_init| {
+                let _ = project_init.remove().map_err(|err| {
                     state.messages.insert(
                         None,
                         common::MessagePriority::InternalError,
@@ -175,7 +185,7 @@ impl<'a, 'b> H<'a, 'b> {
                         &format!("Can't delete project init file: {}", err),
                     );
                 });
-            }
+            });
 
             Some(treexml::Element::new("success"))
         })
@@ -201,7 +211,7 @@ impl<'a, 'b> H<'a, 'b> {
                         .lock()
                         .unwrap()
                         .as_ref()
-                        .map(|err| i64::from(err))
+                        .map(i64::from)
                         .unwrap_or(0),
                 ));
 

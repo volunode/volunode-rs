@@ -8,7 +8,7 @@ pub fn insert_unique<T>(coll: &mut HashMap<uuid::Uuid, T>, v: T) -> (uuid::Uuid,
     loop {
         let k = uuid::Uuid::new(uuid::UuidVersion::Random).unwrap();
         if !coll.contains_key(&k) {
-            coll.insert(k.clone(), v);
+            coll.insert(k, v);
             return (k, coll.get_mut(&k).unwrap());
         }
     }

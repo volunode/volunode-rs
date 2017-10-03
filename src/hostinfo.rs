@@ -76,32 +76,78 @@ impl HostInfo {
     pub fn try_from(root: &treexml::Element) -> errors::Result<HostInfo> {
         let mut v = HostInfo::default();
         for node in &root.children {
-            v.p_fpops.unmarshal("p_fpops", &node);
-            v.p_iops.unmarshal("p_iops", &node);
-            v.p_membw.unmarshal("p_membw", &node);
-            v.p_calculated.unmarshal("p_calculated", &node);
-            v.p_vm_extensions_disabled.unmarshal(
-                "p_vm_extensions_disabled",
-                &node,
-            );
-            v.host_cpid.unmarshal("host_cpid", &node);
-            v.product_name.unmarshal("product_name", &node);
-            v.mac_address.unmarshal("mac_address", &node);
-            v.domain_name.unmarshal("domain_name", &node);
-            v.ip_addr.unmarshal("ip_addr", &node);
-            v.p_vendor.unmarshal("p_vendor", &node);
-            v.p_model.unmarshal("p_model", &node);
-            v.os_name.unmarshal("os_name", &node);
-            v.os_version.unmarshal("os_version", &node);
-            v.p_features.unmarshal("p_features", &node);
-            v.serialnum.unmarshal("serialnum", &node);
-            v.tz_shift.unmarshal("timezone", &node);
-            v.p_ncpus.unmarshal("p_ncpus", &node);
-            v.m_nbytes.unmarshal("m_nbytes", &node);
-            v.m_cache.unmarshal("m_cache", &node);
-            v.m_swap.unmarshal("m_swap", &node);
-            v.d_total.unmarshal("d_total", &node);
-            v.d_free.unmarshal("d_free", &node);
+            match &*node.name {
+                "p_fpops" => {
+                    let _ = v.p_fpops.unmarshal(&node);
+                }
+                "p_iops" => {
+                    let _ = v.p_iops.unmarshal(&node);
+                }
+                "p_membw" => {
+                    let _ = v.p_membw.unmarshal(&node);
+                }
+                "p_calculated" => {
+                    let _ = v.p_calculated.unmarshal(&node);
+                }
+                "p_vm_extensions_disabled" => {
+                    let _ = v.p_vm_extensions_disabled.unmarshal(&node);
+                }
+                "host_cpid" => {
+                    let _ = v.host_cpid.unmarshal(&node);
+                }
+                "product_name" => {
+                    let _ = v.product_name.unmarshal(&node);
+                }
+                "mac_address" => {
+                    let _ = v.mac_address.unmarshal(&node);
+                }
+                "domain_name" => {
+                    let _ = v.domain_name.unmarshal(&node);
+                }
+                "ip_addr" => {
+                    let _ = v.ip_addr.unmarshal(&node);
+                }
+                "p_vendor" => {
+                    let _ = v.p_vendor.unmarshal(&node);
+                }
+                "p_model" => {
+                    let _ = v.p_model.unmarshal(&node);
+                }
+                "os_name" => {
+                    let _ = v.os_name.unmarshal(&node);
+                }
+                "os_version" => {
+                    let _ = v.os_version.unmarshal(&node);
+                }
+                "p_features" => {
+                    let _ = v.p_features.unmarshal(&node);
+                }
+                "serialnum" => {
+                    let _ = v.serialnum.unmarshal(&node);
+                }
+                "timezone" => {
+                    let _ = v.tz_shift.unmarshal(&node);
+                }
+                "p_ncpus" => {
+                    let _ = v.p_ncpus.unmarshal(&node);
+                }
+                "m_nbytes" => {
+                    let _ = v.m_nbytes.unmarshal(&node);
+                }
+                "m_cache" => {
+                    let _ = v.m_cache.unmarshal(&node);
+                }
+                "m_swap" => {
+                    let _ = v.m_swap.unmarshal(&node);
+                }
+                "d_total" => {
+                    let _ = v.d_total.unmarshal(&node);
+                }
+                "d_free" => {
+                    let _ = v.d_free.unmarshal(&node);
+                }
+                _ => {}
+            }
         }
 
         Ok(v)

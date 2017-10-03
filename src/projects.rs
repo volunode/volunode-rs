@@ -9,8 +9,8 @@ extern crate uuid;
 use app;
 use common;
 use context;
+use coproc;
 use errors;
-use file_info;
 use file_names;
 use messages;
 
@@ -20,12 +20,45 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use self::treexml_util::{make_tree_element, make_text_element};
 
-/// Split off from Project for mutability reasons.
+// Describes a project to which this client is attached
 #[derive(Default)]
 pub struct ProjectData {
+    /// user's authenticator on this project
+    pub authenticator: String,
+
     pub project_name: Option<String>,
     pub apps: HashMap<uuid::Uuid, app::App>,
     pub project_prefs: Option<treexml::Element>,
+    pub project_specific_prefs: Option<treexml::Element>,
+
+    /// GUI URLs
+    pub gui_urls: Vec<String>,
+
+    /// project's resource share relative to other projects.
+    pub resource_share: f64,
+    /// temp; fraction of RS of non-suspended, compute-intensive projects
+    pub resource_share_frac: f64,
+    /// temp in get_disk_shares()
+    pub disk_resource_share: f64,
+    /// reported by project
+    pub desired_disk_usage: f64,
+    /// temp in get_disk_shares()
+    pub ddu: f64,
+    /// temp in get_disk_shares()
+    pub disk_quota: f64,
+
+    /// the following are from the user's project prefs
+    pub no_rsc_pref: [bool; coproc::MAX_RSC],
+
+    /// derived from GPU exclusions in cc_config.xml; disable work fetch if all instances excluded
+    pub no_rsc_config: [bool; coproc::MAX_RSC],
+
+    /// the following are from the project itself (or derived from app version list if anonymous platform)
+    pub no_rsc_apps: [bool; coproc::MAX_RSC],
+
+    /// the following are from the account manager, if any
+    pub no_rsc_ams: [bool; coproc::MAX_RSC],
+
     pub host_venue: String,
     pub scheduler_urls: Vec<String>,
     pub user_name: String,
@@ -58,7 +91,6 @@ pub struct ProjectData {
 
     pub anonymous_platform: bool,
     pub attached_via_acct_mgr: bool,
-    pub authenticator: String,
 
     pub disk_usage: f64,
 
@@ -71,7 +103,7 @@ impl ProjectData {
     pub fn can_request_work(&self, now: &common::Time) -> bool {
         !(self.suspended_via_gui || self.master_url_fetch_pending ||
               {
-                  if let &Some(ref v) = &self.min_rpc_time {
+                  if let Some(ref v) = self.min_rpc_time {
                       v > now
                   } else {
                       false
@@ -79,11 +111,7 @@ impl ProjectData {
               } || self.dont_request_more_work)
     }
 
-    pub fn start_computation(&mut self) {
-        self.apps.iter_mut().map(|app| {});
-    }
-
-    pub fn parse_account(&mut self, v: &treexml::Element) -> errors::Result<()> {
+    pub fn parse_account(&mut self, _: &treexml::Element) -> errors::Result<()> {
         Ok(())
     }
 
@@ -157,17 +185,11 @@ impl Project {
 
 pub struct Projects {
     pub data: HashSet<Project>,
-    clock_source: common::ClockSource,
-    logger: messages::SafeLogger,
 }
 
 impl Projects {
-    pub fn new(clock_source: common::ClockSource, logger: messages::SafeLogger) -> Projects {
-        Projects {
-            data: Default::default(),
-            clock_source: clock_source,
-            logger: logger,
-        }
+    pub fn new(_: common::ClockSource, _: messages::SafeLogger) -> Projects {
+        Projects { data: Default::default() }
     }
 
     pub fn find_by_url(&self, url: &str) -> Option<&Project> {
