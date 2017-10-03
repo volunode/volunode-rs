@@ -24,6 +24,7 @@ mod projects;
 mod rpc;
 mod rpc_handlers;
 mod state;
+mod tasks;
 mod util;
 mod workunit;
 
