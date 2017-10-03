@@ -31,6 +31,6 @@ tokio-core = "*"
 tokio-io = "*"
 tokio-proto = "*"
 tokio-service = "*"
-treexml = { git = "https://github.com/vorot93/treexml-rs", branch = "patch-1" }
+treexml = { git = "https://github.com/rahulg/treexml-rs" }
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }
 uuid = { version = "*", features = ["use_std", "serde", "v4"] }
