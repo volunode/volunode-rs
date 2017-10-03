@@ -8,11 +8,11 @@ extern crate boinc_app_api;
 error_chain! {
     links {
         APIError(boinc_app_api::Error, boinc_app_api::ErrorKind);
-        XMLError(treexml::Error, treexml::ErrorKind);
     }
     foreign_links {
         StringConversionError(std::string::FromUtf8Error);
         IOError(std::io::Error);
+        XMLError(treexml::Error);
     }
     errors {
         ConnectError(t: String) {
