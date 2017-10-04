@@ -1,15 +1,9 @@
 extern crate uuid;
 
-use process;
 use workunit;
 
-use std::collections::HashMap;
-
-#[derive(Debug)]
-pub struct ActiveTask {
-    pub connector: process::Process,
-    pub work_unit: uuid::Uuid,
-}
+use std::collections::{HashMap, HashSet};
+use self::uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct AppVersion {
@@ -26,7 +20,7 @@ pub struct AppVersion {
 pub struct App {
     pub name: String,
     pub user_friendly_name: String,
-    pub work_units: HashMap<uuid::Uuid, workunit::Workunit>,
-    pub versions: HashMap<uuid::Uuid, AppVersion>,
-    pub active_tasks: HashMap<uuid::Uuid, ActiveTask>,
+    pub work_units: HashMap<Uuid, workunit::Workunit>,
+    pub versions: HashMap<Uuid, AppVersion>,
+    pub active_tasks: HashSet<Uuid>,
 }

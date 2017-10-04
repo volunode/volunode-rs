@@ -25,6 +25,13 @@ pub struct TaskStatus {
     pct_complete: f64,
 }
 
+#[derive(Debug)]
+struct TaskInfo {
+    status: RunStatus,
+    pct_complete: f64,
+}
+
+/// Managing server that controls all tasks, running or otherwise.
 pub trait TaskServer {
     fn tasks(&self) -> HashMap<Uuid, TaskStatus>;
 
@@ -35,53 +42,59 @@ pub trait TaskServer {
     fn abort_task(&self, &Uuid) -> bool;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Debug, Default)]
+pub struct RealTaskServer {
+    data: Mutex<HashMap<Uuid, TaskInfo>>,
+}
 
-    #[derive(Debug, Default)]
-    pub struct MockTaskServer {
-        data: Mutex<HashMap<Uuid, TaskStatus>>,
-    }
+/// Mock implementation of TaskServer. Useful for testing and development.
+#[derive(Debug, Default)]
+pub struct MockTaskServer {
+    data: Mutex<HashMap<Uuid, TaskStatus>>,
+}
 
 
-    impl MockTaskServer {
-        fn set_status(&self, id: &Uuid, v: RunStatus) -> bool {
-            match self.data.lock().unwrap().get_mut(id) {
-                None => false,
-                Some(info) => {
-                    info.status = v;
-                    true
-                }
+impl MockTaskServer {
+    fn set_status(&self, id: &Uuid, v: RunStatus) -> bool {
+        match self.data.lock().unwrap().get_mut(id) {
+            None => false,
+            Some(info) => {
+                info.status = v;
+                true
             }
         }
     }
+}
 
-    impl TaskServer for MockTaskServer {
-        fn tasks(&self) -> HashMap<Uuid, TaskStatus> {
-            self.data.lock().unwrap().clone()
-        }
-
-        fn create_task(&self, _: &AppVersion, _: &Workunit) -> errors::Result<Uuid> {
-            Ok(
-                util::insert_unique(
-                    &mut (*self.data.lock().unwrap()),
-                    TaskStatus {
-                        status: RunStatus::Stopped,
-                        pct_complete: 0.0,
-                    },
-                ).0,
-            )
-        }
-
-        fn start_task(&self, id: &Uuid) -> bool {
-            self.set_status(id, RunStatus::Running)
-        }
-        fn stop_task(&self, id: &Uuid) -> bool {
-            self.set_status(id, RunStatus::Stopped)
-        }
-        fn abort_task(&self, id: &Uuid) -> bool {
-            self.set_status(id, RunStatus::Aborted)
-        }
+impl TaskServer for MockTaskServer {
+    fn tasks(&self) -> HashMap<Uuid, TaskStatus> {
+        self.data.lock().unwrap().clone()
     }
+
+    fn create_task(&self, _: &AppVersion, _: &Workunit) -> errors::Result<Uuid> {
+        Ok(
+            util::insert_unique(
+                &mut (*self.data.lock().unwrap()),
+                TaskStatus {
+                    status: RunStatus::Stopped,
+                    pct_complete: 0.0,
+                },
+            ).0,
+        )
+    }
+
+    fn start_task(&self, id: &Uuid) -> bool {
+        self.set_status(id, RunStatus::Running)
+    }
+    fn stop_task(&self, id: &Uuid) -> bool {
+        self.set_status(id, RunStatus::Stopped)
+    }
+    fn abort_task(&self, id: &Uuid) -> bool {
+        self.set_status(id, RunStatus::Aborted)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 }

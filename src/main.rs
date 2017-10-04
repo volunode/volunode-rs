@@ -28,6 +28,8 @@ mod tasks;
 mod util;
 mod workunit;
 
+use process::Process;
+
 use std::sync::Arc;
 
 fn launch_service_threads(context: &context::Context<state::ClientState>) {
@@ -112,28 +114,27 @@ fn main() {
         move || rpc::start_rpc_server(context, addr, password)
     });
 
-    let _ = std::env::var("TEST_IPC").map(|path| {
-        process::Process::new(&path, "./boinc_mmap_file", {
-            let context = Arc::clone(&context);
-            let path = path.clone();
-            move |msg| {
-                context.run({
-                    let path = path.clone();
-                    move |state| {
-                        state.unwrap().messages.insert(
-                            None,
-                            common::MessagePriority::Info,
-                            std::time::SystemTime::now().into(),
-                            &format!(
-                                "Received message.\nE: {}\nV: {}",
-                                path,
-                                msg
-                            ),
-                        );
-                    }
-                });
-            }
-        })
+    let p = std::env::var("TEST_IPC").map(|path| {
+        let p = process::SystemProcess::new(&path, "./boinc_mmap_file");
+
+        let context = Arc::clone(&context);
+        let path = path.clone();
+
+        p.set_output_cb(Some(Arc::new(move |msg| {
+            context.run_force({
+                let path = path.clone();
+                move |state| {
+                    state.messages.insert(
+                        None,
+                        common::MessagePriority::Info,
+                        std::time::SystemTime::now().into(),
+                        &format!("Received message.\nE: {}\nV: {}", path, msg),
+                    );
+                }
+            });
+        })));
+
+        p
     });
 
     launch_service_threads(&context);
