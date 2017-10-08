@@ -1,7 +1,9 @@
 extern crate std;
 
 extern crate error_chain;
+extern crate futures;
 extern crate treexml;
+extern crate uuid;
 
 extern crate boinc_app_api;
 
@@ -15,9 +17,17 @@ error_chain! {
         XMLError(treexml::Error);
     }
     errors {
+        NotImplementedError(t: ()) {
+            description("not implemented"),
+            display("requested operation is stubbed but will be implemented in the future"),
+        }
         ConnectError(t: String) {
             description(""),
             display("{}", t),
+        }
+        NoSuchTaskError(id: uuid::Uuid) {
+            description("no such task"),
+            display("Task {} does not exist", id),
         }
         AlreadyAttachedError(t: String) {}
         //DataParseError(_: String) {}
@@ -52,3 +62,6 @@ impl<'a> From<&'a Error> for i64 {
         }
     }
 }
+
+pub type FResult<T> = Box<futures::future::Future<Item = T, Error = Error>>;
+pub type TResult<T> = std::thread::JoinHandle<self::Result<T>>;
