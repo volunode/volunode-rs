@@ -17,9 +17,10 @@ use self::std::sync::{Arc, Mutex};
 use app::*;
 use workunit::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunStatus {
     Running,
+    StopRequested,
     Stopped,
     Aborted,
     Error,
@@ -33,6 +34,7 @@ struct ProcessData {
 
 enum FullRunStatus {
     Running(ProcessData),
+    StopRequested(ProcessData),
     Stopped,
     Aborted,
     Error,
@@ -43,6 +45,7 @@ impl<'a> From<&'a FullRunStatus> for RunStatus {
     fn from(v: &FullRunStatus) -> Self {
         match *v {
             FullRunStatus::Running(_) => RunStatus::Running,
+            FullRunStatus::StopRequested(_) => RunStatus::StopRequested,
             FullRunStatus::Stopped => RunStatus::Stopped,
             FullRunStatus::Aborted => RunStatus::Aborted,
             FullRunStatus::Error => RunStatus::Error,
