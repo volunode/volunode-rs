@@ -2,6 +2,7 @@ extern crate std;
 extern crate boinc_app_api as api;
 extern crate futures;
 extern crate futures_cpupool;
+extern crate futures_spawn;
 extern crate uuid;
 
 use errors;
@@ -10,9 +11,11 @@ use util;
 use self::futures::*;
 use self::future::FutureResult;
 use self::futures_cpupool::*;
+use self::futures_spawn::*;
 use self::uuid::*;
 use self::std::collections::HashMap;
-use self::std::sync::{Arc, Mutex};
+use self::std::sync::{Arc, Mutex, RwLock, atomic};
+use self::atomic::{Ordering, AtomicBool};
 
 use app::*;
 use workunit::*;
@@ -89,11 +92,11 @@ pub trait TaskServer {
 pub struct RealTaskServer {
     // Makes sure that the task is alive
     executor: CpuPool,
-    monitor_thread: Option<std::thread::JoinHandle<()>>,
+    worker: Option<Box<Future<Item = (), Error = ()>>>,
     data: Arc<Mutex<HashMap<Uuid, Task>>>,
 }
 
-impl TaskServer {
+impl RealTaskServer {
     fn start(&self, id: &Uuid) -> errors::FResult<()> {
         Box::from(future::result(
             Err(errors::ErrorKind::NotImplementedError(()).into()),
@@ -148,19 +151,70 @@ impl TaskServer for RealTaskServer {
     }
 }
 
+struct MockTask {
+    pub status: Arc<RwLock<TaskStatus>>,
+    close_chan: Option<std::sync::mpsc::Sender<()>>,
+    refresher_thread: Arc<Option<std::thread::JoinHandle<()>>>,
+}
+
 /// Mock implementation of TaskServer. Useful for testing and development.
-#[derive(Debug)]
 pub struct MockTaskServer {
     executor: CpuPool,
-    data: Mutex<HashMap<Uuid, TaskStatus>>,
+    close_flag: Arc<AtomicBool>,
+    data: Arc<Mutex<HashMap<Uuid, TaskStatus>>>,
+    worker: Option<Box<Future<Item = (), Error = ()>>>,
+}
+
+fn progress_mock_tasks(data: &mut HashMap<Uuid, TaskStatus>, pace: f64) {
+    for (_, v) in data.iter_mut() {
+        if v.status == RunStatus::Running {
+            v.pct_complete += pace;
+
+            if v.pct_complete >= 1.0 {
+                v.pct_complete = 1.0;
+                v.status = RunStatus::Done;
+            }
+        }
+    }
 }
 
 impl Default for MockTaskServer {
     fn default() -> Self {
+        let data = Arc::new(Mutex::new(HashMap::default()));
+        let executor = CpuPool::new(4);
+
+        let close_flag = Arc::new(AtomicBool::default());
+
+        let worker = NewThread.spawn(futures::lazy({
+            let data = Arc::clone(&data);
+            let close_flag = Arc::clone(&close_flag);
+
+            move || loop {
+                if close_flag.load(Ordering::Relaxed) == true {
+                    return future::ok::<(), ()>(());
+                }
+
+                let mut d: std::sync::MutexGuard<HashMap<Uuid, TaskStatus>> = data.lock().unwrap();
+
+                progress_mock_tasks(&mut *d, 0.04);
+
+                std::thread::sleep(std::time::Duration::from_secs(3));
+            }
+        }));
+
         Self {
-            executor: CpuPool::new(4),
-            data: Default::default(),
+            executor: executor,
+            data: data,
+            close_flag: close_flag,
+            worker: Some(Box::from(worker)),
         }
+    }
+}
+
+impl Drop for MockTaskServer {
+    fn drop(&mut self) {
+        self.close_flag.store(true, Ordering::Relaxed);
+        self.worker.take().unwrap().wait();
     }
 }
 
