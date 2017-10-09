@@ -193,11 +193,12 @@ impl Default for MockTaskServer {
                 if close_flag.load(Ordering::Relaxed) == true {
                     return future::ok::<(), ()>(());
                 }
+                {
+                    let mut d: std::sync::MutexGuard<HashMap<Uuid, TaskStatus>> = data.lock()
+                        .unwrap();
 
-                let mut d: std::sync::MutexGuard<HashMap<Uuid, TaskStatus>> = data.lock().unwrap();
-
-                progress_mock_tasks(&mut *d, 0.04);
-
+                    progress_mock_tasks(&mut *d, 0.04);
+                }
                 std::thread::sleep(std::time::Duration::from_secs(3));
             }
         }));
