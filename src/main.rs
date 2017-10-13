@@ -5,6 +5,8 @@ extern crate error_chain;
 #[macro_use]
 extern crate serde;
 
+extern crate tokio_proto;
+
 mod acct_setup;
 mod app;
 mod cc_config;
@@ -28,7 +30,10 @@ mod tasks;
 mod util;
 mod workunit;
 
+use context::Context;
 use process::Process;
+use rpc::RPCServer;
+use state::ClientState;
 
 use std::sync::Arc;
 
@@ -95,10 +100,27 @@ fn launch_service_threads(context: &context::Context<state::ClientState>) {
         .run();
 }
 
+struct Daemon {
+    context: Arc<Context<ClientState>>,
+    rpc_server: RPCServer,
+}
+
+impl Daemon {
+    pub fn run(addr: std::net::SocketAddr, password: Option<String>) -> Self {
+        let context = Arc::new(context::Context::new(state::ClientState::new(
+            Arc::new(messages::StandardLogger::default()),
+        )));
+
+        let srv = rpc::start_rpc_server(Arc::clone(&context), addr, password);
+
+        Self {
+            context: context,
+            rpc_server: srv,
+        }
+    }
+}
+
 fn main() {
-    let context = Arc::new(context::Context::new(state::ClientState::new(
-        Arc::new(messages::StandardLogger::default()),
-    )));
     let addr = format!(
         "127.0.0.1:{}",
         std::env::var(constants::ENV_RPC_PORT)
@@ -109,37 +131,11 @@ fn main() {
         .unwrap();
     let password = std::env::var(constants::ENV_RPC_PASSWORD).ok();
 
-    std::thread::spawn({
-        let context = Arc::clone(&context);
-        move || rpc::start_rpc_server(context, addr, password)
-    });
+    let daemon = Daemon::run(addr, password);
 
-    let p = std::env::var("TEST_IPC").map(|path| {
-        let p = process::SystemProcess::new(&path, "./boinc_mmap_file");
+    launch_service_threads(&daemon.context);
 
-        let context = Arc::clone(&context);
-        let path = path.clone();
-
-        p.set_output_cb(Some(Arc::new(move |msg| {
-            context.run_force({
-                let path = path.clone();
-                move |state| {
-                    state.messages.insert(
-                        None,
-                        common::MessagePriority::Info,
-                        std::time::SystemTime::now().into(),
-                        &format!("Received message.\nE: {}\nV: {}", path, msg),
-                    );
-                }
-            });
-        })));
-
-        p
-    });
-
-    launch_service_threads(&context);
-
-    context.run(|state| {
+    daemon.context.run(|state| {
         state.unwrap().messages.insert(
             None,
             common::MessagePriority::Info,

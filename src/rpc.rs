@@ -249,11 +249,13 @@ impl Service for RpcService {
     }
 }
 
+pub type RPCServer = tokio_proto::TcpServer<tokio_proto::pipeline::Pipeline, RPCProto>;
+
 pub fn start_rpc_server(
     context: Arc<context::Context<state::ClientState>>,
     addr: std::net::SocketAddr,
     password: Option<String>,
-) -> () {
+) -> RPCServer {
     let server = tokio_proto::TcpServer::new(RPCProto, addr);
     let thread_pool = futures_cpupool::CpuPool::new(10);
     context.run({
@@ -283,4 +285,6 @@ pub fn start_rpc_server(
             }
         }
     });
+
+    server
 }
