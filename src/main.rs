@@ -107,7 +107,7 @@ fn main() {
             .unwrap_or(constants::DEFAULT_RPC_PORT)
     ).parse()
         .unwrap();
-    let password = Some("mypass".into());
+    let password = std::env::var(constants::ENV_RPC_PASSWORD).ok();
 
     std::thread::spawn({
         let context = Arc::clone(&context);
