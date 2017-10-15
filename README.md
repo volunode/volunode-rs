@@ -1,10 +1,10 @@
-= Volunode
-Volunode contributors
+![Volunode](logo.svg.png)
 
-Unix client for Berkeley Open Infrastructure for Network Computing.
+Linux client for Berkeley Open Infrastructure for Network Computing.
 
+[![](https://img.shields.io/badge/Chat-on%20Matrix-brightgreen.svg)](https://riot.im/app/#/room/#volunode:matrix.org)
 
-== License
+## License
 Volunode is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License
 as published by the Free Software Foundation,
