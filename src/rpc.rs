@@ -255,8 +255,8 @@ pub fn start_rpc_server(
     context: Arc<context::Context<state::ClientState>>,
     addr: std::net::SocketAddr,
     password: Option<String>,
-) -> RPCServer {
-    let server = tokio_proto::TcpServer::new(RPCProto, addr);
+) -> Arc<RPCServer> {
+    let server = Arc::new(tokio_proto::TcpServer::new(RPCProto, addr));
     let thread_pool = futures_cpupool::CpuPool::new(10);
     context.run({
         let addr = addr;
@@ -269,20 +269,27 @@ pub fn start_rpc_server(
             );
         }
     });
-    server.with_handle({
+    std::thread::spawn({
         let context = Arc::clone(&context);
         let thread_pool = thread_pool.clone();
-        move |_| {
-            let context = Arc::clone(&context);
-            let password = password.clone();
-            let thread_pool = thread_pool.clone();
-            move || {
-                Ok(RpcService::new(
-                    Arc::clone(&context),
-                    thread_pool.clone(),
-                    password.clone(),
-                ))
-            }
+        let server = Arc::clone(&server);
+        move || {
+            server.with_handle({
+                let context = Arc::clone(&context);
+                let thread_pool = thread_pool.clone();
+                move |_| {
+                    let context = Arc::clone(&context);
+                    let password = password.clone();
+                    let thread_pool = thread_pool.clone();
+                    move || {
+                        Ok(RpcService::new(
+                            Arc::clone(&context),
+                            thread_pool.clone(),
+                            password.clone(),
+                        ))
+                    }
+                }
+            });
         }
     });
 

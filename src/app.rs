@@ -7,6 +7,7 @@ use self::uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct AppVersion {
+    pub file_name: String,
     pub app_name: String,
     pub version_num: i32,
     pub platform: String,

@@ -4,12 +4,11 @@ extern crate uuid;
 
 use errors;
 
-use std::io::prelude::*;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, RwLock, Mutex, atomic, mpsc};
-use self::atomic::{AtomicBool, Ordering};
-use std::thread;
-use std::io::BufReader;
+use self::std::io::prelude::*;
+use self::std::process::{Command, Stdio};
+use self::std::sync::{Arc, RwLock, Mutex, mpsc};
+use self::std::sync::atomic::{AtomicBool, Ordering};
+use self::std::io::BufReader;
 use self::uuid::Uuid;
 
 use app::*;
@@ -34,7 +33,7 @@ pub struct SystemProcess {
 
 impl Drop for SystemProcess {
     fn drop(&mut self) {
-        self.dropping.store(true, atomic::Ordering::Relaxed);
+        self.dropping.store(true, Ordering::Relaxed);
         self.process_manager.take().unwrap().join();
     }
 }
@@ -89,7 +88,7 @@ impl SystemProcess {
                 let mut it: Option<std::io::Lines<BufReader<std::process::ChildStdout>>> = None;
 
                 loop {
-                    if dropping.load(atomic::Ordering::Relaxed) {
+                    if dropping.load(Ordering::Relaxed) {
                         break;
                     }
                     match process {

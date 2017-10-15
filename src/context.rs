@@ -1,8 +1,16 @@
 extern crate std;
 
+extern crate futures;
+extern crate futures_spawn;
+
+use self::futures::*;
+use self::futures_spawn::*;
+
 use std::sync::{Arc, RwLock};
 
 pub type ContextData<V> = Arc<RwLock<Option<V>>>;
+
+pub type ContextFuture<T> = Box<Future<Item = T, Error = ()>>;
 
 pub struct ContextMonad<V, T: Send + 'static> {
     pub f: Box<Fn() -> (ContextData<V>, T) + Send + 'static>,
@@ -58,14 +66,10 @@ impl<V: 'static, T: Send + 'static> ContextMonad<V, T> {
         Box::new(move || (self.f)().1)
     }
 
-    pub fn run(self) -> std::thread::JoinHandle<T> {
-        std::thread::spawn({
-            move || self.assemble()()
-        })
-    }
-
-    pub fn await(self) -> T {
-        self.run().join().unwrap()
+    pub fn run(self) -> ContextFuture<T> {
+        Box::from(NewThread.spawn(futures::lazy({
+            move || Ok(self.assemble()())
+        })))
     }
 }
 
@@ -105,7 +109,7 @@ impl<V: Send + Sync + 'static> Context<V> {
         }
     }
 
-    pub fn run<F, T>(&self, f: F) -> std::thread::JoinHandle<T>
+    pub fn run<F, T>(&self, f: F) -> ContextFuture<T>
     where
         F: Fn(Option<&V>) -> T,
         F: Send + 'static,
@@ -114,7 +118,7 @@ impl<V: Send + Sync + 'static> Context<V> {
         self.compose().bind(move |data, _| f(data)).run()
     }
 
-    pub fn run_force<F, T>(&self, f: F) -> std::thread::JoinHandle<T>
+    pub fn run_force<F, T>(&self, f: F) -> ContextFuture<T>
     where
         F: Fn(&V) -> T,
         F: Send + 'static,
@@ -123,25 +127,7 @@ impl<V: Send + Sync + 'static> Context<V> {
         self.compose().bind(move |data, _| f(data.unwrap())).run()
     }
 
-    pub fn await<F, T>(&self, f: F) -> T
-    where
-        F: Fn(Option<&V>) -> T,
-        F: Send + 'static,
-        T: Send + 'static,
-    {
-        self.run(f).join().unwrap()
-    }
-
-    pub fn await_force<F, T>(&self, f: F) -> T
-    where
-        F: Fn(&V) -> T,
-        F: Send + 'static,
-        T: Send + 'static,
-    {
-        self.run_force(f).join().unwrap()
-    }
-
-    pub fn run_mut<F, T>(&self, f: F) -> std::thread::JoinHandle<T>
+    pub fn run_mut<F, T>(&self, f: F) -> ContextFuture<T>
     where
         F: Fn(Option<&mut V>) -> T,
         F: Send + 'static,
@@ -150,7 +136,7 @@ impl<V: Send + Sync + 'static> Context<V> {
         self.compose().bind_mut(move |data, _| f(data)).run()
     }
 
-    pub fn run_mut_force<F, T>(&self, f: F) -> std::thread::JoinHandle<T>
+    pub fn run_mut_force<F, T>(&self, f: F) -> ContextFuture<T>
     where
         F: Fn(&mut V) -> T,
         F: Send + 'static,
@@ -159,23 +145,5 @@ impl<V: Send + Sync + 'static> Context<V> {
         self.compose()
             .bind_mut(move |data, _| f(data.unwrap()))
             .run()
-    }
-
-    pub fn await_mut<F, T>(&self, f: F) -> T
-    where
-        F: Fn(Option<&mut V>) -> T,
-        F: Send + 'static,
-        T: Send + 'static,
-    {
-        self.run_mut(f).join().unwrap()
-    }
-
-    pub fn await_mut_force<F, T>(&self, f: F) -> T
-    where
-        F: Fn(&mut V) -> T,
-        F: Send + 'static,
-        T: Send + 'static,
-    {
-        self.run_mut_force(f).join().unwrap()
     }
 }

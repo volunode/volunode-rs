@@ -13,7 +13,8 @@ use self::future::FutureResult;
 use self::futures_cpupool::*;
 use self::futures_spawn::*;
 use self::uuid::*;
-use self::std::collections::HashMap;
+use self::std::collections::{HashMap, HashSet};
+use self::std::path::PathBuf;
 use self::std::sync::{Arc, Mutex, RwLock, atomic};
 use self::atomic::{Ordering, AtomicBool};
 
@@ -82,7 +83,7 @@ impl<'a> From<&'a Task> for TaskStatus {
 pub trait TaskServer {
     fn tasks(&self) -> errors::FResult<HashMap<Uuid, TaskStatus>>;
 
-    fn create_task(&self, &AppVersion, &Workunit) -> errors::Result<Uuid>;
+    fn create_task(&self, &AppVersion, &Workunit) -> errors::FResult<Uuid>;
 
     fn start_task(&self, &Uuid) -> errors::FResult<()>;
     fn stop_task(&self, &Uuid) -> errors::FResult<()>;
@@ -92,15 +93,35 @@ pub trait TaskServer {
 pub struct RealTaskServer {
     // Makes sure that the task is alive
     executor: CpuPool,
-    worker: Option<Box<Future<Item = (), Error = ()>>>,
+    root: std::path::PathBuf,
+    worker: Option<std::thread::JoinHandle<()>>,
     data: Arc<Mutex<HashMap<Uuid, Task>>>,
+    reserved: Arc<Mutex<HashSet<Uuid>>>,
+}
+
+fn task_path(root: &PathBuf, id: &Uuid) -> PathBuf {
+    root.join("tasks").join(id.to_string())
 }
 
 impl RealTaskServer {
-    fn start(&self, id: &Uuid) -> errors::FResult<()> {
+    fn _start_task(&self, id: &Uuid) -> errors::FResult<()> {
         Box::from(future::result(
             Err(errors::ErrorKind::NotImplementedError(()).into()),
         ))
+    }
+
+    fn task_path(&self, id: &Uuid) -> PathBuf {
+        task_path(&self.root, id)
+    }
+
+    fn new(root: std::path::PathBuf) -> Self {
+        Self {
+            executor: CpuPool::new(4),
+            root: root,
+            worker: Default::default(),
+            data: Default::default(),
+            reserved: Default::default(),
+        }
     }
 }
 
@@ -116,10 +137,21 @@ impl TaskServer for RealTaskServer {
         )))
     }
 
-    fn create_task(&self, app_version: &AppVersion, wu: &Workunit) -> errors::Result<Uuid> {
-        let data = self.data.lock().unwrap();
+    fn create_task(&self, app_version: &AppVersion, wu: &Workunit) -> errors::FResult<Uuid> {
+        let data = Arc::clone(&self.data);
+        let reserved = Arc::clone(&self.reserved);
+        let root = self.root.clone();
 
-        bail!(errors::ErrorKind::NotImplementedError(()));
+        Box::from(NewThread.spawn(futures::lazy(move || {
+            let id = util::reserve_unique(&data.lock().unwrap(), &mut reserved.lock().unwrap());
+
+            /// Create slot directory
+            std::fs::create_dir_all(task_path(&root, &id));
+
+            /// Copy task files: appversion, wu, etc
+
+            Err(errors::ErrorKind::NotImplementedError(()).into())
+        })))
     }
 
     fn start_task(&self, id: &Uuid) -> errors::FResult<()> {
@@ -162,7 +194,7 @@ pub struct MockTaskServer {
     executor: CpuPool,
     close_flag: Arc<AtomicBool>,
     data: Arc<Mutex<HashMap<Uuid, TaskStatus>>>,
-    worker: Option<Box<Future<Item = (), Error = ()>>>,
+    worker: Option<std::thread::JoinHandle<()>>,
 }
 
 fn progress_mock_tasks(data: &mut HashMap<Uuid, TaskStatus>, pace: f64) {
@@ -185,13 +217,13 @@ impl Default for MockTaskServer {
 
         let close_flag = Arc::new(AtomicBool::default());
 
-        let worker = NewThread.spawn(futures::lazy({
+        let worker = std::thread::spawn({
             let data = Arc::clone(&data);
             let close_flag = Arc::clone(&close_flag);
 
             move || loop {
                 if close_flag.load(Ordering::Relaxed) == true {
-                    return future::ok::<(), ()>(());
+                    return;
                 }
                 {
                     let mut d: std::sync::MutexGuard<HashMap<Uuid, TaskStatus>> = data.lock()
@@ -201,13 +233,13 @@ impl Default for MockTaskServer {
                 }
                 std::thread::sleep(std::time::Duration::from_secs(3));
             }
-        }));
+        });
 
         Self {
             executor: executor,
             data: data,
             close_flag: close_flag,
-            worker: Some(Box::from(worker)),
+            worker: Some(worker),
         }
     }
 }
@@ -215,7 +247,7 @@ impl Default for MockTaskServer {
 impl Drop for MockTaskServer {
     fn drop(&mut self) {
         self.close_flag.store(true, Ordering::Relaxed);
-        self.worker.take().unwrap().wait();
+        self.worker.take().unwrap().join().unwrap();
     }
 }
 
@@ -238,8 +270,8 @@ impl TaskServer for MockTaskServer {
         Box::from(future::result(Ok(self.data.lock().unwrap().clone())))
     }
 
-    fn create_task(&self, _: &AppVersion, _: &Workunit) -> errors::Result<Uuid> {
-        Ok(
+    fn create_task(&self, _: &AppVersion, _: &Workunit) -> errors::FResult<Uuid> {
+        Box::from(future::result(Ok(
             util::insert_unique(
                 &mut (*self.data.lock().unwrap()),
                 TaskStatus {
@@ -247,7 +279,7 @@ impl TaskServer for MockTaskServer {
                     pct_complete: 0.0,
                 },
             ).0,
-        )
+        )))
     }
 
     fn start_task(&self, id: &Uuid) -> errors::FResult<()> {

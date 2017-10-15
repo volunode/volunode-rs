@@ -14,6 +14,7 @@ use hostinfo;
 use messages;
 use project_init;
 use projects;
+use tasks;
 use util;
 
 use std::io::Write;
@@ -34,6 +35,8 @@ pub struct ClientState {
 
     pub project_attach: acct_setup::ProjectAttach,
     pub project_init: Option<project_init::ProjectInit>,
+
+    pub tasks: Box<tasks::TaskServer + Send + Sync + 'static>,
 }
 
 impl<'a> From<&'a ClientState> for treexml::Element {
@@ -67,6 +70,7 @@ impl Default for ClientState {
             clock_source: Arc::clone(&clock_source),
             messages: Arc::clone(&messages),
             projects: projects::Projects::new(Arc::clone(&clock_source), Arc::clone(&messages)),
+            tasks: Box::new(tasks::MockTaskServer::default()),
 
             cc_config: Default::default(),
             host_info: Default::default(),
@@ -89,7 +93,7 @@ impl ClientState {
 
     }
 
-    pub fn write_state_file(&self) -> Result<(), std::io::Error> {
+    pub fn write_state_file(&self) -> errors::Result<()> {
         std::fs::File::create(constants::STATE_FILE_NAME)?
             .write_fmt(format_args!("{}", treexml::Element::from(self)))?;
         Ok(())
@@ -160,29 +164,22 @@ impl ClientState {
 
         let project_dir = proj.project_dir();
 
-        proj.data.await_mut_force({
-            let p_name = Arc::new(project_name.to_string());
-            let p_auth = Arc::new(auth.to_string());
-            let attached_via_acct_mgr = attached_via_acct_mgr;
-            let canonical_master_url = canonical_master_url.clone();
-            move |project| -> errors::Result<()> {
-                project.project_name = Some((*p_name).clone());
-                project.authenticator = (*p_auth).clone();
-                project.attached_via_acct_mgr = attached_via_acct_mgr;
+        {
+            let mut p = proj.data.lock().unwrap();
+            p.project_name = Some(project_name.into());
+            p.authenticator = auth.clone();
+            p.attached_via_acct_mgr = attached_via_acct_mgr;
 
-                project.write_account_file()?;
+            p.write_account_file()?;
 
-                project.parse_account(
-                    &treexml::Document::parse(std::fs::File::open(
-                        file_names::account_filename(&canonical_master_url),
-                    )?)?
-                        .root
-                        .unwrap(),
-                )?;
-
-                Ok(())
-            }
-        })?;
+            p.parse_account(
+                &treexml::Document::parse(std::fs::File::open(
+                    file_names::account_filename(&canonical_master_url),
+                )?)?
+                    .root
+                    .unwrap(),
+            )?;
+        }
 
         let path = std::path::PathBuf::from(&format!(
             "{}/{}",
@@ -190,9 +187,7 @@ impl ClientState {
             file_names::APP_INFO_FILE_NAME
         ));
         if path.exists() {
-            proj.data.await_mut_force(
-                |project| project.anonymous_platform = true,
-            );
+            proj.data.lock().unwrap().anonymous_platform = true;
             let _ = std::fs::File::open(path).map(|f| {
                 let _ = treexml::Document::parse(f).map(|doc| {
                     doc.root.map(
@@ -206,9 +201,7 @@ impl ClientState {
 
         proj.make_project_dir()?;
 
-        proj.data.await_mut_force(|project| {
-            project.sched_rpc_pending = Some(common::RpcReason::Init);
-        });
+        proj.data.lock().unwrap().sched_rpc_pending = Some(common::RpcReason::Init);
 
         assert!(self.projects.data.insert(proj));
 

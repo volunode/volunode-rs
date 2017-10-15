@@ -16,8 +16,9 @@ use messages;
 
 use common::ProjAm;
 
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use self::std::collections::{HashMap, HashSet};
+use self::std::hash::{Hash, Hasher};
+use self::std::sync::{Arc, Mutex};
 use self::treexml_util::{make_tree_element, make_text_element};
 
 // Describes a project to which this client is attached
@@ -123,7 +124,7 @@ impl ProjectData {
 #[derive(Default)]
 pub struct Project {
     _master_url: String,
-    pub data: context::Context<ProjectData>,
+    pub data: Arc<Mutex<ProjectData>>,
 }
 
 impl Hash for Project {
@@ -144,9 +145,7 @@ impl common::ProjAm for Project {
     }
 
     fn project_name(&self) -> Option<String> {
-        self.data.await_force(
-            |project| project.project_name.clone(),
-        )
+        self.data.lock().unwrap().project_name.clone()
     }
 }
 
