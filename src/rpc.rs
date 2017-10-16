@@ -249,49 +249,60 @@ impl Service for RpcService {
     }
 }
 
-pub type RPCServer = tokio_proto::TcpServer<tokio_proto::pipeline::Pipeline, RPCProto>;
-
-pub fn start_rpc_server(
-    context: Arc<context::Context<state::ClientState>>,
+pub struct RPCServer {
+    srv: Arc<tokio_proto::TcpServer<tokio_proto::pipeline::Pipeline, RPCProto>>,
+    worker: std::thread::JoinHandle<()>,
     addr: std::net::SocketAddr,
     password: Option<String>,
-) -> Arc<RPCServer> {
-    let server = Arc::new(tokio_proto::TcpServer::new(RPCProto, addr));
-    let thread_pool = futures_cpupool::CpuPool::new(10);
-    context.run({
-        let addr = addr;
-        move |state| {
-            state.unwrap().messages.insert(
-                None,
-                common::MessagePriority::Debug,
-                std::time::SystemTime::now().into(),
-                &format!("Starting RPC server at {}", &addr),
-            );
-        }
-    });
-    std::thread::spawn({
-        let context = Arc::clone(&context);
-        let thread_pool = thread_pool.clone();
-        let server = Arc::clone(&server);
-        move || {
-            server.with_handle({
-                let context = Arc::clone(&context);
-                let thread_pool = thread_pool.clone();
-                move |_| {
-                    let context = Arc::clone(&context);
-                    let password = password.clone();
-                    let thread_pool = thread_pool.clone();
-                    move || {
-                        Ok(RpcService::new(
-                            Arc::clone(&context),
-                            thread_pool.clone(),
-                            password.clone(),
-                        ))
-                    }
-                }
-            });
-        }
-    });
+}
 
-    server
+impl RPCServer {
+    pub fn run(
+        context: Arc<context::Context<state::ClientState>>,
+        addr: std::net::SocketAddr,
+        password: Option<String>,
+    ) -> Arc<RPCServer> {
+        let server = Arc::new(tokio_proto::TcpServer::new(RPCProto, addr));
+        let thread_pool = futures_cpupool::CpuPool::new(10);
+        context.run_force({
+            let addr = addr;
+            move |state| {
+                state.messages.insert(
+                    None,
+                    common::MessagePriority::Debug,
+                    std::time::SystemTime::now().into(),
+                    &format!("Starting RPC server at {}", &addr),
+                );
+            }
+        });
+        let worker = std::thread::spawn({
+            let password = password.clone();
+            let context = Arc::clone(&context);
+            let thread_pool = thread_pool.clone();
+            let server = Arc::clone(&server);
+            move || {
+                server.with_handle({
+                    move |_| {
+                        let context = Arc::clone(&context);
+                        let password = password.clone();
+                        let thread_pool = thread_pool.clone();
+                        move || {
+                            Ok(RpcService::new(
+                                Arc::clone(&context),
+                                thread_pool.clone(),
+                                password.clone(),
+                            ))
+                        }
+                    }
+                });
+            }
+        });
+
+        Arc::new(RPCServer {
+            srv: server,
+            worker: worker,
+            addr: addr,
+            password: password,
+        })
+    }
 }

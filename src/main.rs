@@ -105,22 +105,53 @@ fn launch_service_threads(
     ]
 }
 
+struct RPCSettings {
+    pub addr: std::net::SocketAddr,
+    pub password: Option<String>,
+}
+
+enum RPCEnabled {
+    Yes(RPCSettings),
+    No,
+}
+
+impl From<(Option<std::net::SocketAddr>, Option<String>)> for RPCEnabled {
+    fn from(v: (Option<std::net::SocketAddr>, Option<String>)) -> Self {
+        let (addr, password) = v;
+        match addr {
+            Some(v) => RPCEnabled::Yes(RPCSettings {
+                addr: v,
+                password: password,
+            }),
+            None => RPCEnabled::No,
+
+        }
+    }
+}
+
 struct Daemon {
     context: Arc<Context<ClientState>>,
-    rpc_server: Arc<RPCServer>,
+    rpc_server: Option<Arc<RPCServer>>,
     service_threads: Vec<ContextFuture<()>>,
 }
 
 impl Daemon {
-    pub fn run(addr: std::net::SocketAddr, password: Option<String>) -> Self {
+    pub fn run(rpc_enable: RPCEnabled) -> Self {
         let context = Arc::new(context::Context::new(state::ClientState::new(
             Arc::new(messages::StandardLogger::default()),
         )));
 
-        let srv = rpc::start_rpc_server(Arc::clone(&context), addr, password);
+        let srv = match rpc_enable {
+            RPCEnabled::Yes(settings) => Some(rpc::RPCServer::run(
+                Arc::clone(&context),
+                settings.addr,
+                settings.password,
+            )),
+            RPCEnabled::No => None,
+        };
 
         Self {
-            service_threads: launch_service_threads(&*context),
+            service_threads: Default::default(), //launch_service_threads(&*context),
             context: context,
             rpc_server: srv,
         }
@@ -128,17 +159,13 @@ impl Daemon {
 }
 
 fn main() {
-    let addr = format!(
-        "127.0.0.1:{}",
-        std::env::var(constants::ENV_RPC_PORT)
-            .ok()
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(constants::DEFAULT_RPC_PORT)
-    ).parse()
-        .unwrap();
+    let addr = std::env::var(constants::ENV_RPC_ADDR).ok().map(|v| {
+        v.parse().unwrap()
+    });
     let password = std::env::var(constants::ENV_RPC_PASSWORD).ok();
 
-    let daemon = Daemon::run(addr, password);
+
+    let daemon = Daemon::run((addr, password).into());
 
     daemon.context.run(|state| {
         state.unwrap().messages.insert(
