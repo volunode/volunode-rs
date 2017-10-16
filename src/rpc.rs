@@ -144,6 +144,7 @@ impl RpcService {
         };
 
         (match &*v.name {
+             "acct_mgr_info" => H::acct_mgr_info,
              "get_message_count" => H::get_message_count,
              "get_messages" => H::get_messages,
              "get_notices" => H::get_notices,

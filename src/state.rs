@@ -3,6 +3,7 @@ extern crate std;
 extern crate treexml;
 extern crate uuid;
 
+use acct_mgr;
 use acct_setup;
 use cc_config;
 use common;
@@ -35,6 +36,8 @@ pub struct ClientState {
 
     pub project_attach: acct_setup::ProjectAttach,
     pub project_init: Option<project_init::ProjectInit>,
+
+    pub acct_mgr_info: acct_mgr::AcctMgrInfo,
 
     pub tasks: Box<tasks::TaskServer + Send + Sync + 'static>,
 }
@@ -77,6 +80,8 @@ impl Default for ClientState {
             file_infos: Default::default(),
             project_attach: Default::default(),
             project_init: Default::default(),
+
+            acct_mgr_info: Default::default(),
         }
     }
 }

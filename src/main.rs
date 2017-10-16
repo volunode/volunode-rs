@@ -9,6 +9,7 @@ extern crate futures;
 extern crate tokio_proto;
 
 mod acct_setup;
+mod acct_mgr;
 mod app;
 mod cc_config;
 mod cert_sig;

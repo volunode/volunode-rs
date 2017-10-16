@@ -3,6 +3,7 @@ extern crate futures;
 extern crate treexml;
 extern crate treexml_util;
 
+use acct_mgr;
 use common;
 use constants;
 use context;
@@ -233,6 +234,35 @@ impl<'a, 'b> H<'a, 'b> {
                     ));
 
                     children
+                })
+                .wait()
+                .unwrap(),
+        ))
+    }
+
+    pub fn acct_mgr_info(&self) -> Option<treexml::Element> {
+        Some(make_tree_element(
+            "acct_mgr_info",
+            self.context
+                .run_force(|state| {
+                    let mut v =
+                        vec![
+                            make_text_element("acct_mgr_url", &state.acct_mgr_info.master_url),
+                            make_text_element("acct_mgr_name", &state.acct_mgr_info.project_name),
+                        ];
+
+                    if let Some(ref s) = state.acct_mgr_info.login_name {
+                        v.push(treexml::Element::new("have_credentials"));
+                    }
+
+                    if let acct_mgr::CookieStatus::Required(ref failure_url) =
+                        state.acct_mgr_info.cookie_status
+                    {
+                        v.push(treexml::Element::new("cookie_required"));
+                        v.push(make_text_element("cookie_failure_url", failure_url));
+                    }
+
+                    v
                 })
                 .wait()
                 .unwrap(),
