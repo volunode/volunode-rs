@@ -1,5 +1,5 @@
 [package]
-name = "volunode-rs"
+name = "volunode"
 version = "0.1.0"
 authors = [
     "Artem Vorotnikov <artem@vorotnikov.me>",
