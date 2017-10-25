@@ -145,10 +145,12 @@ impl RpcService {
 
         (match &*v.name {
              "acct_mgr_info" => H::acct_mgr_info,
+             "get_cc_status" => H::get_cc_status,
              "get_message_count" => H::get_message_count,
              "get_messages" => H::get_messages,
              "get_notices" => H::get_notices,
              "get_state" => H::get_state,
+             "get_statistics" => H::get_statistics,
              "get_all_projects_list" => H::get_all_projects_list,
              "get_disk_usage" => H::get_disk_usage,
              "project_attach" => H::project_attach,
@@ -252,7 +254,7 @@ impl Service for RpcService {
 
 pub struct RPCServer {
     srv: Arc<tokio_proto::TcpServer<tokio_proto::pipeline::Pipeline, RPCProto>>,
-    worker: std::thread::JoinHandle<()>,
+    worker: Option<std::thread::JoinHandle<()>>,
     addr: std::net::SocketAddr,
     password: Option<String>,
 }
@@ -301,7 +303,7 @@ impl RPCServer {
 
         Arc::new(RPCServer {
             srv: server,
-            worker: worker,
+            worker: Some(worker),
             addr: addr,
             password: password,
         })

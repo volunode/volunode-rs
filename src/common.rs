@@ -1,13 +1,83 @@
 extern crate chrono;
 extern crate std;
+extern crate treexml;
 
 use std::sync::{Arc, Mutex};
 
-pub type Time = chrono::DateTime<chrono::offset::Utc>;
-pub type ClockSource = Arc<Fn() -> Time + Sync + Send>;
+use errors;
 
-pub fn system_clock_source() -> ClockSource {
-    Arc::new(|| std::time::SystemTime::now().into())
+pub type Time = chrono::DateTime<chrono::offset::Utc>;
+pub type Duration = chrono::Duration;
+
+pub trait ClockSource : Sync+Send{
+    fn now(&self) -> Time;
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SystemClockSource;
+
+impl ClockSource for SystemClockSource {
+    fn now(&self) -> Time {
+        std::time::SystemTime::now().into()
+    }
+}
+
+pub trait ClockInitializable {
+    fn new_with_clock(Arc<ClockSource>) -> Self;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RunMode {
+    Always,
+    Auto,
+    Never,
+    Restore,
+}
+
+impl Default for RunMode {
+    fn default() -> Self {
+        RunMode::Auto
+    }
+}
+
+impl From<RunMode> for u8 {
+    fn from(v: RunMode) -> u8 {
+        match v {
+            RunMode::Always => 1,
+            RunMode::Auto => 2,
+            RunMode::Never => 3,
+            RunMode::Restore => 4,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NetInfo {
+    pub max_rate: f64,
+    pub avg_rate: f64,
+    pub avg_time: Time,
+}
+
+impl NetInfo {
+    pub fn update(&self, nbytes: f64, dt: f64) {
+        unimplemented!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NetStats {
+    up: NetInfo,
+    down: NetInfo,
+}
+
+impl NetStats {
+    pub fn write(&self) -> treexml::Element {
+        unimplemented!()
+    }
+
+    pub fn try_from(e: &treexml::Element) -> errors::Result<treexml::Element> {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -24,8 +24,55 @@ use std::ops::Deref;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use common::*;
+
+#[derive(Clone)]
+pub struct RunSettings {
+    clock_source: Arc<ClockSource>,
+    perm_mode: RunMode,
+    temp_mode: Option<(RunMode, Time)>,
+    prev_mode: RunMode,
+}
+
+impl RunSettings {
+    pub fn get_perm(&self) -> RunMode {
+        self.perm_mode
+    }
+
+    pub fn get_prev(&self) -> RunMode {
+        self.prev_mode
+    }
+
+    pub fn get_current(&self) -> RunMode {
+        if let Some(&(temp_mode, until)) = self.temp_mode.as_ref() {
+            if self.clock_source.now() < until {
+                return temp_mode
+            }
+        }
+
+        self.perm_mode
+    }
+    pub fn delay(&self) -> Duration {
+        Duration::seconds(match self.temp_mode {
+            Some((mode, end)) => std::cmp::max(end.timestamp() - self.clock_source.now().timestamp(), 0),
+            None => 0,
+        })
+    }
+}
+
+impl ClockInitializable for RunSettings {
+    fn new_with_clock(clock_source: Arc<ClockSource>) -> Self {
+        Self {
+            clock_source: clock_source,
+            perm_mode: Default::default(),
+            temp_mode: Default::default(),
+            prev_mode: Default::default(),
+        }
+    }
+}
+
 pub struct ClientState {
-    pub clock_source: common::ClockSource,
+    pub clock_source: Box<ClockSource>,
 
     pub cc_config: cc_config::CCConfig,
     pub messages: messages::SafeLogger,
@@ -40,6 +87,12 @@ pub struct ClientState {
     pub acct_mgr_info: acct_mgr::AcctMgrInfo,
 
     pub tasks: Box<tasks::TaskServer + Send + Sync + 'static>,
+
+    pub run_mode: RunSettings,
+    pub gpu_run_mode: RunSettings,
+
+    pub suspend_reason: Option<RpcReason>,
+    pub gpu_suspend_reason: Option<RpcReason>,
 }
 
 impl<'a> From<&'a ClientState> for treexml::Element {
@@ -67,12 +120,12 @@ impl<'a> From<&'a ClientState> for treexml::Element {
 
 impl Default for ClientState {
     fn default() -> Self {
-        let clock_source = common::system_clock_source();
         let messages: messages::SafeLogger = Arc::new(messages::DummyLogger::default());
+        let clock_source = Arc::new(SystemClockSource);
         Self {
-            clock_source: Arc::clone(&clock_source),
+            clock_source: Box::new(*clock_source.clone()),
             messages: Arc::clone(&messages),
-            projects: projects::Projects::new(Arc::clone(&clock_source), Arc::clone(&messages)),
+            projects: projects::Projects::new(Arc::clone(&messages)),
             tasks: Box::new(tasks::MockTaskServer::default()),
 
             cc_config: Default::default(),
@@ -82,17 +135,20 @@ impl Default for ClientState {
             project_init: Default::default(),
 
             acct_mgr_info: Default::default(),
+
+            gpu_run_mode: ClockInitializable::new_with_clock(clock_source.clone()),
+            run_mode: ClockInitializable::new_with_clock(clock_source.clone()),
+
+            suspend_reason: Default::default(),
+            gpu_suspend_reason: Default::default(),
         }
     }
 }
 
 impl ClientState {
     pub fn new(messages: messages::SafeLogger) -> Self {
-        let clock_source = common::system_clock_source();
         Self {
-            clock_source: Arc::clone(&clock_source),
             messages: Arc::clone(&messages),
-            projects: projects::Projects::new(Arc::clone(&clock_source), Arc::clone(&messages)),
             ..Default::default()
         }
 
@@ -206,7 +262,7 @@ impl ClientState {
 
         proj.make_project_dir()?;
 
-        proj.data.lock().unwrap().sched_rpc_pending = Some(common::RpcReason::Init);
+        proj.data.lock().unwrap().sched_rpc_pending = Some(RpcReason::Init);
 
         assert!(self.projects.data.insert(proj));
 

@@ -7,6 +7,7 @@ use acct_mgr;
 use common;
 use constants;
 use context;
+use projects;
 use state;
 
 use self::std::io::Read;
@@ -15,6 +16,7 @@ use self::treexml_util::Unmarshaller;
 
 use common::ProjAm;
 
+use self::std::collections::*;
 use self::treexml_util::{make_tree_element, make_text_element};
 
 fn make_error(v: &str) -> treexml::Element {
@@ -197,7 +199,7 @@ impl<'a, 'b> H<'a, 'b> {
                         state.messages.insert(
                             None,
                             common::MessagePriority::InternalError,
-                            (state.clock_source)(),
+                            state.clock_source.now(),
                             &format!("Can't delete project init file: {}", err),
                         );
                     });
@@ -266,6 +268,66 @@ impl<'a, 'b> H<'a, 'b> {
                 })
                 .wait()
                 .unwrap(),
+        ))
+    }
+
+    pub fn get_cc_status(&self) -> Option<treexml::Element> {
+        Some(make_tree_element(
+            "cc_status",
+            self.context
+                .run_force(|state: &state::ClientState| {
+                    let now = state.clock_source.now();
+                    vec![
+                        make_text_element("ams_password_error", state.acct_mgr_info.password_error),
+                        make_text_element("task_suspend_reason", state.suspend_reason.map(|v| v.into()).unwrap_or(0)),
+                        make_text_element("task_mode", u8::from(state.run_mode.get_current())),
+                        make_text_element("task_mode_perm", u8::from(state.run_mode.get_perm())),
+                        make_text_element("task_mode_delay", state.run_mode.delay().num_seconds()),
+                        make_text_element("gpu_suspend_reason", state.gpu_suspend_reason.map(|v| u8::from(v)).unwrap_or(0)),
+                        make_text_element("gpu_mode", u8::from(state.gpu_run_mode.get_current())),
+                        make_text_element("gpu_mode_perm", u8::from(state.gpu_run_mode.get_perm())),
+                        make_text_element("gpu_mode_delay", state.gpu_run_mode.delay().num_seconds()),
+                        make_text_element("network_mode", 0),
+                        make_text_element("disallow_attach", state.cc_config.disallow_attach as u8),
+                        make_text_element("simple_gui_only", state.cc_config.simple_gui_only as u8),
+                        make_text_element("max_event_log_lines", state.cc_config.max_event_log_lines),
+                    ]
+                })
+                .wait()
+                .unwrap(),
+        ))
+    }
+
+    pub fn get_statistics(&self) -> Option<treexml::Element> {
+        Some(make_tree_element(
+            "statistics",
+            {
+                let stats: HashMap<String, Vec<projects::DailyStats>> = self.context.run_force(|state: &state::ClientState| {
+                    state.projects.data.iter().map(|p: &projects::Project| (p.master_url(), p.data.lock().unwrap().statistics.clone())).collect()
+                })
+                    .wait()
+                    .unwrap();
+
+                stats.into_iter().map(|data| {
+                    let (master_url, stat_data) = data;
+                    make_tree_element("project_statistics",
+                    {
+                        let mut v = Vec::new();
+                        v.push(make_text_element("master_url", master_url));
+                        v.append(&mut stat_data.into_iter().map(|i: projects::DailyStats| -> treexml::Element {
+                            make_tree_element("daily_statistics", vec![
+                                make_text_element("day", i.day),
+                                make_text_element("user_total_credit", i.user_total_credit),
+                                make_text_element("user_expavg_credit", i.user_expavg_credit),
+                                make_text_element("host_total_credit", i.host_total_credit),
+                                make_text_element("host_expavg_credit", i.host_expavg_credit),
+                            ])
+                        }).collect());
+                        v
+                    })
+                }).collect()
+            },
+
         ))
     }
 }

@@ -21,6 +21,15 @@ use self::std::hash::{Hash, Hasher};
 use self::std::sync::{Arc, Mutex};
 use self::treexml_util::{make_tree_element, make_text_element};
 
+#[derive(Clone, Default)]
+pub struct DailyStats {
+    pub user_total_credit: f64,
+    pub user_expavg_credit: f64,
+    pub host_total_credit: f64,
+    pub host_expavg_credit: f64,
+    pub day: i64,
+}
+
 // Describes a project to which this client is attached
 #[derive(Default)]
 pub struct ProjectData {
@@ -97,6 +106,8 @@ pub struct ProjectData {
 
     pub suspended_via_gui: bool,
     pub dont_request_more_work: bool,
+
+    pub statistics: Vec<DailyStats>,
 }
 
 
@@ -187,7 +198,7 @@ pub struct Projects {
 }
 
 impl Projects {
-    pub fn new(_: common::ClockSource, _: messages::SafeLogger) -> Projects {
+    pub fn new(_: messages::SafeLogger) -> Projects {
         Projects { data: Default::default() }
     }
 

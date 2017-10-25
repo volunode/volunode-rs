@@ -21,6 +21,7 @@ pub struct AcctMgrInfo {
     pub user_name: String,
     pub password_hash: String,
     pub cookie_status: CookieStatus,
+    pub password_error: bool,
 }
 
 impl common::ProjAm for AcctMgrInfo {

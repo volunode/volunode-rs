@@ -133,7 +133,7 @@ impl Logger for StandardLogger {
         if seqno >= data.len() {
             vec![]
         } else {
-            match data.get(if seqno < 1 { 1 } else { seqno } - 1..data.len()) {
+            match data.get(std::cmp::min(seqno, 1) - 1..data.len()) {
                 Some(out) => out.into(),
                 None => vec![],
             }
