@@ -122,6 +122,14 @@ impl<'a, 'b> H<'a, 'b> {
                                 "d_free",
                                 &state.host_info.d_free
                             ),
+                            make_text_element(
+                                "d_boinc",
+                                &state.host_info.d_boinc
+                            ),
+                            make_text_element(
+                                "d_allowed",
+                                &state.host_info.d_allowed
+                            ),
                         ]);
 
                         out

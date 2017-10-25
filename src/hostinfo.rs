@@ -31,6 +31,8 @@ pub struct HostInfo {
 
     pub d_total: f64,
     pub d_free: f64,
+    pub d_boinc: f64,
+    pub d_allowed: f64,
 
     pub os_name: String,
     pub os_version: String,
