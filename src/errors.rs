@@ -2,10 +2,13 @@ extern crate std;
 
 extern crate error_chain;
 extern crate futures;
+extern crate futures_spawn;
 extern crate treexml;
 extern crate uuid;
 
 extern crate boinc_app_api;
+
+use self::futures_spawn::SpawnHelper;
 
 error_chain! {
     links {
@@ -63,5 +66,15 @@ impl<'a> From<&'a Error> for i64 {
     }
 }
 
+pub type FResultUnboxed<T> = futures::future::Future<Item = T, Error = Error>;
 pub type FResult<T> = Box<futures::future::Future<Item = T, Error = Error>>;
 pub type TResult<T> = std::thread::JoinHandle<self::Result<T>>;
+
+/// Spawns a new thread and returns a future.
+pub fn fspawn<T, F>(f: F) -> FResult<T>
+where
+    T: Send + 'static,
+    F: Fn() -> Result<T> + Send + 'static,
+{
+    Box::from(futures_spawn::NewThread.spawn(futures::lazy(f)))
+}

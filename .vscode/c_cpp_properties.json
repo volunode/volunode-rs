@@ -1,0 +1,36 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/usr/include/c++/7.2.0",
+                "/usr/include/c++/7.2.0/x86_64-pc-linux-gnu",
+                "/usr/local/include",
+                "/usr/lib/clang/5.0.0/include",
+                "/usr/include",
+                "/home/vorot93/code/foreign/boinc/api",
+                "/home/vorot93/code/foreign/boinc/lib",
+                "/home/vorot93/code/foreign/boinc/client",
+                "${workspaceRoot}"
+            ],
+            "defines": [],
+            "intelliSenseMode": "clang-x64",
+            "browse": {
+                "path": [
+                    "/usr/include/c++/7.2.0",
+                    "/usr/include/c++/7.2.0/x86_64-pc-linux-gnu",
+                    "/usr/local/include",
+                    "/usr/lib/clang/5.0.0/include",
+                    "/usr/include",
+                    "/home/vorot93/code/foreign/boinc/api",
+                    "/home/vorot93/code/foreign/boinc/lib",
+                    "/home/vorot93/code/foreign/boinc/client",
+                    "${workspaceRoot}"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": ""
+            }
+        }
+    ],
+    "version": 3
+}

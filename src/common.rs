@@ -9,7 +9,7 @@ use errors;
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
 pub type Duration = chrono::Duration;
 
-pub trait ClockSource : Sync+Send{
+pub trait ClockSource: Sync + Send {
     fn now(&self) -> Time;
 }
 

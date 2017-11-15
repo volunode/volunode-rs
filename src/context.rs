@@ -3,6 +3,8 @@ extern crate std;
 extern crate futures;
 extern crate futures_spawn;
 
+use errors;
+
 use self::futures::*;
 use self::futures_spawn::*;
 
@@ -10,7 +12,7 @@ use std::sync::{Arc, RwLock};
 
 pub type ContextData<V> = Arc<RwLock<Option<V>>>;
 
-pub type ContextFuture<T> = Box<Future<Item = T, Error = ()>>;
+pub type ContextFuture<T> = errors::FResult<T>;
 
 pub struct ContextMonad<V, T: Send + 'static> {
     pub f: Box<Fn() -> (ContextData<V>, T) + Send + 'static>,
@@ -67,9 +69,9 @@ impl<V: 'static, T: Send + 'static> ContextMonad<V, T> {
     }
 
     pub fn run(self) -> ContextFuture<T> {
-        Box::from(NewThread.spawn(futures::lazy({
+        errors::fspawn({
             move || Ok(self.assemble()())
-        })))
+        })
     }
 }
 

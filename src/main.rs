@@ -5,6 +5,7 @@ extern crate error_chain;
 #[macro_use]
 extern crate serde;
 extern crate futures;
+extern crate futures_spawn;
 
 extern crate tokio_proto;
 
@@ -31,11 +32,14 @@ mod state;
 mod tasks;
 mod util;
 mod workunit;
+mod xfers;
 
 use context::{Context, ContextFuture};
 use process::Process;
 use rpc::RPCServer;
 use state::ClientState;
+
+use futures_spawn::SpawnHelper;
 
 use std::sync::Arc;
 
@@ -152,7 +156,23 @@ impl Daemon {
         };
 
         Self {
-            service_threads: Default::default(), //launch_service_threads(&*context),
+            service_threads: vec![
+                context
+                    .compose()
+                    .bind_rwlock(|s, _| loop {
+                        {
+                            let state = s.read().unwrap();
+                            state.as_ref().unwrap().messages.insert(
+                                None,
+                                common::MessagePriority::Info,
+                                std::time::SystemTime::now().into(),
+                                "This is a test",
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(3))
+                    })
+                    .run(),
+            ],
             context: context,
             rpc_server: srv,
         }
@@ -168,8 +188,8 @@ fn main() {
 
     let daemon = Daemon::run((addr, password).into());
 
-    daemon.context.run(|state| {
-        state.unwrap().messages.insert(
+    daemon.context.run_force(|state| {
+        state.messages.insert(
             None,
             common::MessagePriority::Info,
             std::time::SystemTime::now().into(),

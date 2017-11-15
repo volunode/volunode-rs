@@ -25,6 +25,8 @@ error-chain = "*"
 futures = "*"
 futures-spawn = "*"
 futures-cpupool = "*"
+hyper = "*"
+reqwest = { version = "*", features = ["unstable"]}
 rust-crypto = "*"
 serde = "*"
 serde_json = "*"

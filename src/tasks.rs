@@ -142,7 +142,7 @@ impl TaskServer for RealTaskServer {
         let reserved = Arc::clone(&self.reserved);
         let root = self.root.clone();
 
-        Box::from(NewThread.spawn(futures::lazy(move || {
+        Box::from(self.executor.spawn(futures::lazy(move || {
             let id = util::reserve_unique(&data.lock().unwrap(), &mut reserved.lock().unwrap());
 
             /// Create slot directory

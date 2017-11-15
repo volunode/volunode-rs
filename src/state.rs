@@ -46,7 +46,7 @@ impl RunSettings {
     pub fn get_current(&self) -> RunMode {
         if let Some(&(temp_mode, until)) = self.temp_mode.as_ref() {
             if self.clock_source.now() < until {
-                return temp_mode
+                return temp_mode;
             }
         }
 
@@ -54,7 +54,9 @@ impl RunSettings {
     }
     pub fn delay(&self) -> Duration {
         Duration::seconds(match self.temp_mode {
-            Some((mode, end)) => std::cmp::max(end.timestamp() - self.clock_source.now().timestamp(), 0),
+            Some((mode, end)) => {
+                std::cmp::max(end.timestamp() - self.clock_source.now().timestamp(), 0)
+            }
             None => 0,
         })
     }

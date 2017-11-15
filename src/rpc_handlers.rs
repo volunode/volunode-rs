@@ -287,18 +287,30 @@ impl<'a, 'b> H<'a, 'b> {
                     let now = state.clock_source.now();
                     vec![
                         make_text_element("ams_password_error", state.acct_mgr_info.password_error),
-                        make_text_element("task_suspend_reason", state.suspend_reason.map(|v| v.into()).unwrap_or(0)),
+                        make_text_element(
+                            "task_suspend_reason",
+                            state.suspend_reason.map(|v| v.into()).unwrap_or(0)
+                        ),
                         make_text_element("task_mode", u8::from(state.run_mode.get_current())),
                         make_text_element("task_mode_perm", u8::from(state.run_mode.get_perm())),
                         make_text_element("task_mode_delay", state.run_mode.delay().num_seconds()),
-                        make_text_element("gpu_suspend_reason", state.gpu_suspend_reason.map(|v| u8::from(v)).unwrap_or(0)),
+                        make_text_element(
+                            "gpu_suspend_reason",
+                            state.gpu_suspend_reason.map(|v| u8::from(v)).unwrap_or(0)
+                        ),
                         make_text_element("gpu_mode", u8::from(state.gpu_run_mode.get_current())),
                         make_text_element("gpu_mode_perm", u8::from(state.gpu_run_mode.get_perm())),
-                        make_text_element("gpu_mode_delay", state.gpu_run_mode.delay().num_seconds()),
+                        make_text_element(
+                            "gpu_mode_delay",
+                            state.gpu_run_mode.delay().num_seconds()
+                        ),
                         make_text_element("network_mode", 0),
                         make_text_element("disallow_attach", state.cc_config.disallow_attach as u8),
                         make_text_element("simple_gui_only", state.cc_config.simple_gui_only as u8),
-                        make_text_element("max_event_log_lines", state.cc_config.max_event_log_lines),
+                        make_text_element(
+                            "max_event_log_lines",
+                            state.cc_config.max_event_log_lines
+                        ),
                     ]
                 })
                 .wait()
@@ -307,16 +319,22 @@ impl<'a, 'b> H<'a, 'b> {
     }
 
     pub fn get_statistics(&self) -> Option<treexml::Element> {
-        Some(make_tree_element(
-            "statistics",
-            {
-                let stats: HashMap<String, Vec<projects::DailyStats>> = self.context.run_force(|state: &state::ClientState| {
-                    state.projects.data.iter().map(|p: &projects::Project| (p.master_url(), p.data.lock().unwrap().statistics.clone())).collect()
+        Some(make_tree_element("statistics", {
+            let stats: HashMap<String, Vec<projects::DailyStats>> = self.context
+                .run_force(|state: &state::ClientState| {
+                    state
+                        .projects
+                        .data
+                        .iter()
+                        .map(|p: &projects::Project| {
+                            (p.master_url(), p.data.lock().unwrap().statistics.clone())
+                        })
+                        .collect()
                 })
-                    .wait()
-                    .unwrap();
+                .wait()
+                .unwrap();
 
-                stats.into_iter().map(|data| {
+            stats.into_iter().map(|data| {
                     let (master_url, stat_data) = data;
                     make_tree_element("project_statistics",
                     {
@@ -334,8 +352,6 @@ impl<'a, 'b> H<'a, 'b> {
                         v
                     })
                 }).collect()
-            },
-
-        ))
+        }))
     }
 }
