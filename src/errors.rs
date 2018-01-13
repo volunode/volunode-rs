@@ -48,6 +48,10 @@ error_chain! {
             description("action is not allowed by user"),
             display("action is not allowed by user: {}", &t),
         }
+        InternalError(t: String) {
+            description("internal error"),
+            display("internal error has occurred: {}", &t),
+        }
     }
 }
 

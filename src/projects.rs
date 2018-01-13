@@ -19,7 +19,7 @@ use common::ProjAm;
 use self::std::collections::{HashMap, HashSet};
 use self::std::hash::{Hash, Hasher};
 use self::std::sync::{Arc, Mutex};
-use self::treexml_util::{make_tree_element, make_text_element};
+use self::treexml_util::{make_text_element, make_tree_element};
 
 #[derive(Clone, Default)]
 pub struct DailyStats {
@@ -110,17 +110,15 @@ pub struct ProjectData {
     pub statistics: Vec<DailyStats>,
 }
 
-
 impl ProjectData {
     pub fn can_request_work(&self, now: &common::Time) -> bool {
-        !(self.suspended_via_gui || self.master_url_fetch_pending ||
-              {
-                  if let Some(ref v) = self.min_rpc_time {
-                      v > now
-                  } else {
-                      false
-                  }
-              } || self.dont_request_more_work)
+        !(self.suspended_via_gui || self.master_url_fetch_pending || {
+            if let Some(ref v) = self.min_rpc_time {
+                v > now
+            } else {
+                false
+            }
+        } || self.dont_request_more_work)
     }
 
     pub fn parse_account(&mut self, _: &treexml::Element) -> errors::Result<()> {
@@ -199,7 +197,9 @@ pub struct Projects {
 
 impl Projects {
     pub fn new(_: messages::SafeLogger) -> Projects {
-        Projects { data: Default::default() }
+        Projects {
+            data: Default::default(),
+        }
     }
 
     pub fn find_by_url(&self, url: &str) -> Option<&Project> {

@@ -2,14 +2,14 @@ extern crate chrono;
 extern crate std;
 extern crate treexml;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use errors;
 
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
 pub type Duration = chrono::Duration;
 
-pub trait ClockSource : Sync+Send{
+pub trait ClockSource: Sync + Send {
     fn now(&self) -> Time;
 }
 
@@ -125,7 +125,6 @@ impl From<MessagePriority> for u8 {
         }
     }
 }
-
 
 impl MessagePriority {
     fn from_num(v: u8) -> Option<MessagePriority> {

@@ -67,9 +67,7 @@ impl<V: 'static, T: Send + 'static> ContextMonad<V, T> {
     }
 
     pub fn run(self) -> ContextFuture<T> {
-        Box::from(NewThread.spawn(futures::lazy({
-            move || Ok(self.assemble()())
-        })))
+        Box::from(NewThread.spawn(futures::lazy({ move || Ok(self.assemble()()) })))
     }
 }
 
@@ -91,7 +89,9 @@ impl<V: Send + Sync + Default> Default for Context<V> {
 
 impl<V: Send + Sync + 'static> Context<V> {
     pub fn new(v: V) -> Self {
-        Self { data: Arc::new(RwLock::new(Some(v))) }
+        Self {
+            data: Arc::new(RwLock::new(Some(v))),
+        }
     }
 
     pub fn raw(&self) -> &RwLock<Option<V>> {

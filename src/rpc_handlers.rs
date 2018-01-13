@@ -1,5 +1,5 @@
-extern crate std;
 extern crate futures;
+extern crate std;
 extern crate treexml;
 extern crate treexml_util;
 
@@ -17,7 +17,7 @@ use self::treexml_util::Unmarshaller;
 use common::ProjAm;
 
 use self::std::collections::*;
-use self::treexml_util::{make_tree_element, make_text_element};
+use self::treexml_util::{make_text_element, make_tree_element};
 
 fn make_error(v: &str) -> treexml::Element {
     make_text_element("error", v)
@@ -72,16 +72,13 @@ impl<'a, 'b> H<'a, 'b> {
                 let mut s = String::new();
                 match file.read_to_string(&mut s) {
                     Err(_) => None,
-                    Ok(_) => {
-                        match treexml::Document::parse(
-                            std::io::Cursor::new(format!("<root>{}</root>", &s)),
-                        ) {
-                            Err(_) => None,
-                            Ok(doc) => {
-                                Some(make_tree_element("projects", doc.root.unwrap().children))
-                            }
-                        }
-                    }
+                    Ok(_) => match treexml::Document::parse(std::io::Cursor::new(format!(
+                        "<root>{}</root>",
+                        &s
+                    ))) {
+                        Err(_) => None,
+                        Ok(doc) => Some(make_tree_element("projects", doc.root.unwrap().children)),
+                    },
                 }
             }
         }
@@ -99,13 +96,10 @@ impl<'a, 'b> H<'a, 'b> {
                                 treexml::Element {
                                     name: "project".into(),
                                     children: vec![
-                                        make_text_element(
-                                            "master_url",
-                                            proj.master_url()
-                                        ),
+                                        make_text_element("master_url", proj.master_url()),
                                         make_text_element(
                                             "disk_usage",
-                                            proj.data.lock().unwrap().disk_usage
+                                            proj.data.lock().unwrap().disk_usage,
                                         ),
                                     ],
                                     ..Default::default()
@@ -114,22 +108,10 @@ impl<'a, 'b> H<'a, 'b> {
                         }
 
                         out.append(&mut vec![
-                            make_text_element(
-                                "d_total",
-                                &state.host_info.d_total
-                            ),
-                            make_text_element(
-                                "d_free",
-                                &state.host_info.d_free
-                            ),
-                            make_text_element(
-                                "d_boinc",
-                                &state.host_info.d_boinc
-                            ),
-                            make_text_element(
-                                "d_allowed",
-                                &state.host_info.d_allowed
-                            ),
+                            make_text_element("d_total", &state.host_info.d_total),
+                            make_text_element("d_free", &state.host_info.d_free),
+                            make_text_element("d_boinc", &state.host_info.d_boinc),
+                            make_text_element("d_allowed", &state.host_info.d_allowed),
                         ]);
 
                         out
@@ -255,11 +237,10 @@ impl<'a, 'b> H<'a, 'b> {
             "acct_mgr_info",
             self.context
                 .run_force(|state| {
-                    let mut v =
-                        vec![
-                            make_text_element("acct_mgr_url", &state.acct_mgr_info.master_url),
-                            make_text_element("acct_mgr_name", &state.acct_mgr_info.project_name),
-                        ];
+                    let mut v = vec![
+                        make_text_element("acct_mgr_url", &state.acct_mgr_info.master_url),
+                        make_text_element("acct_mgr_name", &state.acct_mgr_info.project_name),
+                    ];
 
                     if let Some(ref s) = state.acct_mgr_info.login_name {
                         v.push(treexml::Element::new("have_credentials"));
@@ -287,18 +268,30 @@ impl<'a, 'b> H<'a, 'b> {
                     let now = state.clock_source.now();
                     vec![
                         make_text_element("ams_password_error", state.acct_mgr_info.password_error),
-                        make_text_element("task_suspend_reason", state.suspend_reason.map(|v| v.into()).unwrap_or(0)),
+                        make_text_element(
+                            "task_suspend_reason",
+                            state.suspend_reason.map(|v| v.into()).unwrap_or(0),
+                        ),
                         make_text_element("task_mode", u8::from(state.run_mode.get_current())),
                         make_text_element("task_mode_perm", u8::from(state.run_mode.get_perm())),
                         make_text_element("task_mode_delay", state.run_mode.delay().num_seconds()),
-                        make_text_element("gpu_suspend_reason", state.gpu_suspend_reason.map(|v| u8::from(v)).unwrap_or(0)),
+                        make_text_element(
+                            "gpu_suspend_reason",
+                            state.gpu_suspend_reason.map(|v| u8::from(v)).unwrap_or(0),
+                        ),
                         make_text_element("gpu_mode", u8::from(state.gpu_run_mode.get_current())),
                         make_text_element("gpu_mode_perm", u8::from(state.gpu_run_mode.get_perm())),
-                        make_text_element("gpu_mode_delay", state.gpu_run_mode.delay().num_seconds()),
+                        make_text_element(
+                            "gpu_mode_delay",
+                            state.gpu_run_mode.delay().num_seconds(),
+                        ),
                         make_text_element("network_mode", 0),
                         make_text_element("disallow_attach", state.cc_config.disallow_attach as u8),
                         make_text_element("simple_gui_only", state.cc_config.simple_gui_only as u8),
-                        make_text_element("max_event_log_lines", state.cc_config.max_event_log_lines),
+                        make_text_element(
+                            "max_event_log_lines",
+                            state.cc_config.max_event_log_lines,
+                        ),
                     ]
                 })
                 .wait()
@@ -307,35 +300,53 @@ impl<'a, 'b> H<'a, 'b> {
     }
 
     pub fn get_statistics(&self) -> Option<treexml::Element> {
-        Some(make_tree_element(
-            "statistics",
-            {
-                let stats: HashMap<String, Vec<projects::DailyStats>> = self.context.run_force(|state: &state::ClientState| {
-                    state.projects.data.iter().map(|p: &projects::Project| (p.master_url(), p.data.lock().unwrap().statistics.clone())).collect()
+        Some(make_tree_element("statistics", {
+            let stats: HashMap<String, Vec<projects::DailyStats>> = self.context
+                .run_force(|state: &state::ClientState| {
+                    state
+                        .projects
+                        .data
+                        .iter()
+                        .map(|p: &projects::Project| {
+                            (p.master_url(), p.data.lock().unwrap().statistics.clone())
+                        })
+                        .collect()
                 })
-                    .wait()
-                    .unwrap();
+                .wait()
+                .unwrap();
 
-                stats.into_iter().map(|data| {
+            stats
+                .into_iter()
+                .map(|data| {
                     let (master_url, stat_data) = data;
-                    make_tree_element("project_statistics",
-                    {
+                    make_tree_element("project_statistics", {
                         let mut v = Vec::new();
                         v.push(make_text_element("master_url", master_url));
-                        v.append(&mut stat_data.into_iter().map(|i: projects::DailyStats| -> treexml::Element {
-                            make_tree_element("daily_statistics", vec![
-                                make_text_element("day", i.day),
-                                make_text_element("user_total_credit", i.user_total_credit),
-                                make_text_element("user_expavg_credit", i.user_expavg_credit),
-                                make_text_element("host_total_credit", i.host_total_credit),
-                                make_text_element("host_expavg_credit", i.host_expavg_credit),
-                            ])
-                        }).collect());
+                        v.append(&mut stat_data
+                            .into_iter()
+                            .map(|i: projects::DailyStats| -> treexml::Element {
+                                make_tree_element(
+                                    "daily_statistics",
+                                    vec![
+                                        make_text_element("day", i.day),
+                                        make_text_element("user_total_credit", i.user_total_credit),
+                                        make_text_element(
+                                            "user_expavg_credit",
+                                            i.user_expavg_credit,
+                                        ),
+                                        make_text_element("host_total_credit", i.host_total_credit),
+                                        make_text_element(
+                                            "host_expavg_credit",
+                                            i.host_expavg_credit,
+                                        ),
+                                    ],
+                                )
+                            })
+                            .collect());
                         v
                     })
-                }).collect()
-            },
-
-        ))
+                })
+                .collect()
+        }))
     }
 }

@@ -5,7 +5,7 @@ use errors;
 
 use self::treexml_util::Unmarshaller;
 
-use self::treexml_util::{make_tree_element, make_text_element};
+use self::treexml_util::{make_text_element, make_tree_element};
 
 #[derive(Clone, Debug, Default)]
 pub struct HostInfo {

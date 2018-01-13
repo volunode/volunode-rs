@@ -27,7 +27,7 @@ use self::crypto::md5::Md5;
 
 use std::io;
 use std::sync::{Arc, RwLock};
-use self::treexml_util::{make_tree_element, make_text_element};
+use self::treexml_util::{make_text_element, make_tree_element};
 
 use self::handlers::H;
 
@@ -55,12 +55,10 @@ impl Decoder for RPCCodec {
                 println!("{}", String::from_utf8_lossy(line.as_ref()));
 
                 match treexml::Document::parse(line.as_ref()) {
-                    Ok(s) => {
-                        match s.root {
-                            Some(r) => Ok(Some(r)),
-                            None => Err(parse_err()),
-                        }
-                    }
+                    Ok(s) => match s.root {
+                        Some(r) => Ok(Some(r)),
+                        None => Err(parse_err()),
+                    },
                     Err(_) => Err(parse_err()),
                 }
             }
@@ -144,21 +142,21 @@ impl RpcService {
         };
 
         (match &*v.name {
-             "acct_mgr_info" => H::acct_mgr_info,
-             "get_cc_status" => H::get_cc_status,
-             "get_message_count" => H::get_message_count,
-             "get_messages" => H::get_messages,
-             "get_notices" => H::get_notices,
-             "get_state" => H::get_state,
-             "get_statistics" => H::get_statistics,
-             "get_all_projects_list" => H::get_all_projects_list,
-             "get_disk_usage" => H::get_disk_usage,
-             "project_attach" => H::project_attach,
-             "project_attach_poll" => H::project_attach_poll,
-             _ => {
-                 return None;
-             }
-         })(&h)
+            "acct_mgr_info" => H::acct_mgr_info,
+            "get_cc_status" => H::get_cc_status,
+            "get_message_count" => H::get_message_count,
+            "get_messages" => H::get_messages,
+            "get_notices" => H::get_notices,
+            "get_state" => H::get_state,
+            "get_statistics" => H::get_statistics,
+            "get_all_projects_list" => H::get_all_projects_list,
+            "get_disk_usage" => H::get_disk_usage,
+            "project_attach" => H::project_attach,
+            "project_attach_poll" => H::project_attach_poll,
+            _ => {
+                return None;
+            }
+        })(&h)
     }
 }
 
@@ -223,27 +221,23 @@ impl Service for RpcService {
                 }
                 AuthState::ChallengeSent(ref nonce) => {
                     match treexml_util::find_value::<String>("nonce_hash", req) {
-                        Ok(opt_response) => {
-                            match opt_response {
-                                Some(response) => {
-                                    if self.salted_hash(nonce).unwrap() == response {
-                                        authorize(&mut *s)
-                                    } else {
-                                        unauthorize(&mut *s)
-                                    }
+                        Ok(opt_response) => match opt_response {
+                            Some(response) => {
+                                if self.salted_hash(nonce).unwrap() == response {
+                                    authorize(&mut *s)
+                                } else {
+                                    unauthorize(&mut *s)
                                 }
-                                None => unauthorize(&mut *s),
                             }
-                        }
+                            None => unauthorize(&mut *s),
+                        },
                         Err(_) => unauthorize(&mut *s),
                     }
                 }
-                AuthState::Unauthorized => {
-                    rsp_err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Still banging into closed door",
-                    ))
-                }
+                AuthState::Unauthorized => rsp_err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Still banging into closed door",
+                )),
                 AuthState::Ready => rsp_ok(self.process_request(req).into()),
             }
         } else {

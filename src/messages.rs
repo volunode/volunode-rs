@@ -4,7 +4,7 @@ extern crate treexml_util;
 
 use std::sync::{Arc, RwLock};
 use std::fmt::Display;
-use self::treexml_util::{make_tree_element, make_text_element, make_cdata_element};
+use self::treexml_util::{make_cdata_element, make_text_element, make_tree_element};
 
 use common;
 
@@ -23,7 +23,7 @@ impl<'a> From<&'a Message> for treexml::Element {
             vec![
                 make_text_element(
                     "project",
-                    v.project_name.as_ref().or(Some(&"".into())).unwrap()
+                    v.project_name.as_ref().or(Some(&"".into())).unwrap(),
                 ),
                 make_text_element("pri", &u8::from(v.priority.clone())),
                 make_cdata_element("body", &v.body),
@@ -143,6 +143,8 @@ impl Logger for StandardLogger {
 
 impl Clone for StandardLogger {
     fn clone(&self) -> StandardLogger {
-        StandardLogger { msgs: RwLock::new(self.msgs.read().unwrap().clone()) }
+        StandardLogger {
+            msgs: RwLock::new(self.msgs.read().unwrap().clone()),
+        }
     }
 }

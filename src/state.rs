@@ -46,7 +46,7 @@ impl RunSettings {
     pub fn get_current(&self) -> RunMode {
         if let Some(&(temp_mode, until)) = self.temp_mode.as_ref() {
             if self.clock_source.now() < until {
-                return temp_mode
+                return temp_mode;
             }
         }
 
@@ -54,7 +54,9 @@ impl RunSettings {
     }
     pub fn delay(&self) -> Duration {
         Duration::seconds(match self.temp_mode {
-            Some((mode, end)) => std::cmp::max(end.timestamp() - self.clock_source.now().timestamp(), 0),
+            Some((mode, end)) => {
+                std::cmp::max(end.timestamp() - self.clock_source.now().timestamp(), 0)
+            }
             None => 0,
         })
     }
@@ -105,12 +107,7 @@ impl<'a> From<&'a ClientState> for treexml::Element {
             children: {
                 let mut v = Vec::new();
                 v.push(host_info.deref().into());
-                v.append(&mut projects
-                    .deref()
-                    .data
-                    .iter()
-                    .map(|v| v.into())
-                    .collect());
+                v.append(&mut projects.deref().data.iter().map(|v| v.into()).collect());
                 v
             },
             ..Default::default()
@@ -151,7 +148,6 @@ impl ClientState {
             messages: Arc::clone(&messages),
             ..Default::default()
         }
-
     }
 
     pub fn write_state_file(&self) -> errors::Result<()> {
@@ -233,13 +229,10 @@ impl ClientState {
 
             p.write_account_file()?;
 
-            p.parse_account(
-                &treexml::Document::parse(std::fs::File::open(
-                    file_names::account_filename(&canonical_master_url),
-                )?)?
-                    .root
-                    .unwrap(),
-            )?;
+            p.parse_account(&treexml::Document::parse(std::fs::File::open(
+                file_names::account_filename(&canonical_master_url),
+            )?)?.root
+                .unwrap())?;
         }
 
         let path = std::path::PathBuf::from(&format!(
@@ -251,9 +244,9 @@ impl ClientState {
             proj.data.lock().unwrap().anonymous_platform = true;
             let _ = std::fs::File::open(path).map(|f| {
                 let _ = treexml::Document::parse(f).map(|doc| {
-                    doc.root.map(
-                        |e| { let _ = self.parse_app_info(&proj, &e); },
-                    );
+                    doc.root.map(|e| {
+                        let _ = self.parse_app_info(&proj, &e);
+                    });
                 });
             });
         } else {

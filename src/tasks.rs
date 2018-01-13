@@ -1,22 +1,25 @@
-extern crate std;
+#![feature(proc_macro, conservative_impl_trait, generators)]
+
 extern crate boinc_app_api as api;
-extern crate futures;
+extern crate futures_await as futures;
 extern crate futures_cpupool;
 extern crate futures_spawn;
+extern crate std;
 extern crate uuid;
 
 use errors;
 use util;
 
 use self::futures::*;
-use self::future::FutureResult;
+use self::futures::prelude::*;
+use self::futures::future::{ok, FutureResult, PollFn};
 use self::futures_cpupool::*;
 use self::futures_spawn::*;
 use self::uuid::*;
-use self::std::collections::{HashMap, HashSet};
-use self::std::path::PathBuf;
-use self::std::sync::{Arc, Mutex, RwLock, atomic};
-use self::atomic::{Ordering, AtomicBool};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock, TryLockError};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use app::*;
 use workunit::*;
@@ -33,7 +36,7 @@ pub enum RunStatus {
 
 struct ProcessData {
     pub pid: i64,
-    pub ipcstream: api::IPCStream,
+    pub conn: api::app_connection::AppConnection,
 }
 
 enum FullRunStatus {
@@ -70,14 +73,27 @@ struct Task {
     pub pct_complete: f64,
 }
 
-impl<'a> From<&'a Task> for TaskStatus {
-    fn from(v: &Task) -> Self {
-        Self {
-            status: (&v.status).into(),
-            pct_complete: v.pct_complete,
+impl Task {
+    pub fn get_status(&self) -> TaskStatus {
+        TaskStatus {
+            status: (&self.status).into(),
+            pct_complete: self.pct_complete,
         }
     }
 }
+
+/*
+impl Future for Task {
+    type Item = ();
+    type Error = errors::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self.status {
+            Done => Async::Ready(()),
+        }
+    }
+}
+*/
 
 /// Managing server that controls all tasks, running or otherwise.
 pub trait TaskServer {
@@ -92,94 +108,85 @@ pub trait TaskServer {
 
 pub struct RealTaskServer {
     // Makes sure that the task is alive
-    executor: CpuPool,
     root: std::path::PathBuf,
     worker: Option<std::thread::JoinHandle<()>>,
     data: Arc<Mutex<HashMap<Uuid, Task>>>,
     reserved: Arc<Mutex<HashSet<Uuid>>>,
 }
 
-fn task_path(root: &PathBuf, id: &Uuid) -> PathBuf {
-    root.join("tasks").join(id.to_string())
-}
-
 impl RealTaskServer {
-    fn _start_task(&self, id: &Uuid) -> errors::FResult<()> {
-        Box::from(future::result(
-            Err(errors::ErrorKind::NotImplementedError(()).into()),
-        ))
-    }
-
     fn task_path(&self, id: &Uuid) -> PathBuf {
-        task_path(&self.root, id)
+        util::task_path(&self.root, id)
     }
 
     fn new(root: std::path::PathBuf) -> Self {
         Self {
-            executor: CpuPool::new(4),
             root: root,
             worker: Default::default(),
             data: Default::default(),
             reserved: Default::default(),
         }
     }
+
+    #[async(boxed)]
+    fn _create_task(
+        data: Arc<Mutex<HashMap<Uuid, Task>>>,
+        reserved: Arc<Mutex<HashSet<Uuid>>>,
+        root: std::path::PathBuf,
+        app_version: &AppVersion,
+        wu: &Workunit,
+    ) -> errors::Result<Uuid> {
+        let id = await!(util::mutex_critical(data, move |data| Ok(util::reserve_unique(data, &mut reserved.lock().unwrap()))))?;
+
+        // Create slot directory
+        std::fs::create_dir_all(util::task_path(&root, &id));
+
+        // Copy task files: appversion, wu, etc
+        Err(errors::ErrorKind::NotImplementedError(()).into())
+    }
 }
 
 impl TaskServer for RealTaskServer {
     fn tasks(&self) -> errors::FResult<HashMap<Uuid, TaskStatus>> {
-        Box::from(future::result(Ok(
-            self.data
-                .lock()
-                .unwrap()
-                .iter()
-                .map(|(id, v)| (id.clone(), v.into()))
-                .collect(),
-        )))
+        Box::new(util::mutex_critical(Arc::clone(&self.data), |data| {
+            Ok(data.iter()
+                .map(|(id, v)| (id.clone(), v.get_status()))
+                .collect())
+        }))
     }
 
     fn create_task(&self, app_version: &AppVersion, wu: &Workunit) -> errors::FResult<Uuid> {
-        let data = Arc::clone(&self.data);
-        let reserved = Arc::clone(&self.reserved);
-        let root = self.root.clone();
-
-        Box::from(NewThread.spawn(futures::lazy(move || {
-            let id = util::reserve_unique(&data.lock().unwrap(), &mut reserved.lock().unwrap());
-
-            /// Create slot directory
-            std::fs::create_dir_all(task_path(&root, &id));
-
-            /// Copy task files: appversion, wu, etc
-
-            Err(errors::ErrorKind::NotImplementedError(()).into())
-        })))
+        Self::_create_task(
+            self.data.clone(),
+            self.reserved.clone(),
+            self.root.clone(),
+            app_version,
+            wu,
+        )
     }
 
     fn start_task(&self, id: &Uuid) -> errors::FResult<()> {
-        let data = Arc::clone(&self.data);
         let id = id.clone();
-
-        Box::from(self.executor.spawn(future::lazy(move || {
-            let mut d = data.lock().unwrap();
-            match d.get_mut(&id) {
+        Box::new(util::mutex_critical(
+            Arc::clone(&self.data),
+            move |d| match d.get_mut(&id) {
                 None => Err(errors::ErrorKind::NotImplementedError(()).into()),
                 Some(e) => {
                     //e.status = FullRunStatus::Running(ProcessData {});
-                    bail!(errors::ErrorKind::NotImplementedError(()));
+                    Err(errors::ErrorKind::NotImplementedError(()).into())
                 }
-            }
-        })))
-    }
-
-    fn stop_task(&self, id: &Uuid) -> errors::FResult<()> {
-        Box::from(future::result(
-            Err(errors::ErrorKind::NotImplementedError(()).into()),
+            },
         ))
     }
 
-    fn abort_task(&self, id: &Uuid) -> errors::FResult<()> {
-        Box::from(future::result(
-            Err(errors::ErrorKind::NotImplementedError(()).into()),
-        ))
+    #[async(boxed)]
+    fn stop_task(&self, id: &Uuid) -> errors::Result<()> {
+        Err(errors::ErrorKind::NotImplementedError(()).into())
+    }
+
+    #[async(boxed)]
+    fn abort_task(&self, id: &Uuid) -> errors::Result<()> {
+        Err(errors::ErrorKind::NotImplementedError(()).into())
     }
 }
 
@@ -226,8 +233,8 @@ impl Default for MockTaskServer {
                     return;
                 }
                 {
-                    let mut d: std::sync::MutexGuard<HashMap<Uuid, TaskStatus>> = data.lock()
-                        .unwrap();
+                    let mut d: std::sync::MutexGuard<HashMap<Uuid, TaskStatus>> =
+                        data.lock().unwrap();
 
                     progress_mock_tasks(&mut *d, 0.04);
                 }
@@ -253,9 +260,11 @@ impl Drop for MockTaskServer {
 
 impl MockTaskServer {
     fn set_status(&self, id: &Uuid, v: RunStatus) -> errors::FResult<()> {
-        Box::from(future::result(
-            match self.data.lock().unwrap().get_mut(id) {
-                None => Err(errors::ErrorKind::NoSuchTaskError(id.clone()).into()),
+        let id = id.clone();
+        Box::new(util::mutex_critical(
+            Arc::clone(&self.data),
+            move |data| match data.get_mut(&id) {
+                None => Err(errors::ErrorKind::NoSuchTaskError(id).into()),
                 Some(info) => {
                     info.status = v;
                     Ok(())
@@ -267,27 +276,31 @@ impl MockTaskServer {
 
 impl TaskServer for MockTaskServer {
     fn tasks(&self) -> errors::FResult<HashMap<Uuid, TaskStatus>> {
-        Box::from(future::result(Ok(self.data.lock().unwrap().clone())))
+        Box::new(util::mutex_critical(Arc::clone(&self.data), |data| {
+            Ok(data.clone())
+        }))
     }
 
     fn create_task(&self, _: &AppVersion, _: &Workunit) -> errors::FResult<Uuid> {
-        Box::from(future::result(Ok(
-            util::insert_unique(
-                &mut (*self.data.lock().unwrap()),
+        Box::new(util::mutex_critical(Arc::clone(&self.data), |data| {
+            Ok(util::insert_unique(
+                data,
                 TaskStatus {
                     status: RunStatus::Stopped,
                     pct_complete: 0.0,
                 },
-            ).0,
-        )))
+            ).0)
+        }))
     }
 
     fn start_task(&self, id: &Uuid) -> errors::FResult<()> {
         self.set_status(id, RunStatus::Running)
     }
+
     fn stop_task(&self, id: &Uuid) -> errors::FResult<()> {
         self.set_status(id, RunStatus::Stopped)
     }
+
     fn abort_task(&self, id: &Uuid) -> errors::FResult<()> {
         self.set_status(id, RunStatus::Aborted)
     }
