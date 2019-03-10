@@ -75,7 +75,7 @@ impl<'a> From<&'a HostInfo> for treexml::Element {
 }
 
 impl HostInfo {
-    pub fn try_from(root: &treexml::Element) -> errors::Result<HostInfo> {
+    pub fn try_from(root: &treexml::Element) -> Result<HostInfo, errors::Error> {
         let mut v = HostInfo::default();
         for node in &root.children {
             match &*node.name {

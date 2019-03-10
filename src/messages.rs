@@ -2,9 +2,9 @@ extern crate std;
 extern crate treexml;
 extern crate treexml_util;
 
-use std::sync::{Arc, RwLock};
-use std::fmt::Display;
 use self::treexml_util::{make_cdata_element, make_text_element, make_tree_element};
+use std::fmt::Display;
+use std::sync::{Arc, RwLock};
 
 use common;
 

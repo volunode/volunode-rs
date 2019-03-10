@@ -1,23 +1,12 @@
-#![feature(proc_macro, conservative_impl_trait, generators)]
 #![recursion_limit = "1024"]
 
-#[macro_use]
-extern crate error_chain;
-#[macro_use]
-extern crate futures_await as futures;
-#[macro_use]
-extern crate serde;
-
-extern crate tokio_proto;
-
-mod acct_setup;
 mod acct_mgr;
+mod acct_setup;
 mod app;
 mod cc_config;
 mod cert_sig;
 mod common;
 mod constants;
-mod context;
 mod coproc;
 mod errors;
 mod file_info;
@@ -34,121 +23,27 @@ mod tasks;
 mod util;
 mod workunit;
 
-use context::{Context, ContextFuture};
 use process::Process;
 use rpc::RPCServer;
 use state::ClientState;
 
-use std::sync::Arc;
-
-fn launch_service_threads(
-    context: &context::Context<state::ClientState>,
-) -> Vec<ContextFuture<()>> {
-    vec![
-        context
-            .compose()
-            .bind_rwlock(|r, _| loop {
-                match r.read().unwrap().as_ref() {
-                    Some(state) => state.messages.insert(
-                        None,
-                        common::MessagePriority::Info,
-                        std::time::SystemTime::now().into(),
-                        "Service 1 ping",
-                    ),
-                    None => {
-                        return;
-                    }
-                };
-                std::thread::sleep(std::time::Duration::from_millis(2500));
-            })
-            .run(),
-        context
-            .compose()
-            .bind_rwlock(|r, _| loop {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                match r.read().unwrap().as_ref() {
-                    Some(state) => state.messages.insert(
-                        None,
-                        common::MessagePriority::Info,
-                        std::time::SystemTime::now().into(),
-                        "Service 2 ping",
-                    ),
-                    None => {
-                        return;
-                    }
-                };
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            })
-            .run(),
-        context
-            .compose()
-            .bind_rwlock(|r, _| loop {
-                match r.write().unwrap().as_mut() {
-                    Some(ref mut state) => state.messages.insert(
-                        None,
-                        common::MessagePriority::Info,
-                        std::time::SystemTime::now().into(),
-                        "Mutating service ping",
-                    ),
-                    None => {
-                        return;
-                    }
-                };
-                std::thread::sleep(std::time::Duration::from_millis(2000));
-            })
-            .run(),
-    ]
-}
-
-struct RPCSettings {
-    pub addr: std::net::SocketAddr,
-    pub password: Option<String>,
-}
-
-enum RPCEnabled {
-    Yes(RPCSettings),
-    No,
-}
-
-impl From<(Option<std::net::SocketAddr>, Option<String>)> for RPCEnabled {
-    fn from(v: (Option<std::net::SocketAddr>, Option<String>)) -> Self {
-        let (addr, password) = v;
-        match addr {
-            Some(v) => RPCEnabled::Yes(RPCSettings {
-                addr: v,
-                password: password,
-            }),
-            None => RPCEnabled::No,
-        }
-    }
-}
+use futures::Future;
+use std::sync::{Arc, Mutex};
+use tokio_core::reactor::{Core, Handle};
 
 struct Daemon {
-    context: Arc<Context<ClientState>>,
-    rpc_server: Option<Arc<RPCServer>>,
-    service_threads: Vec<ContextFuture<()>>,
+    state: ClientState,
+    rpc_server: Option<RPCServer>,
 }
 
 impl Daemon {
-    pub fn run(rpc_enable: RPCEnabled) -> Self {
-        let context = Arc::new(context::Context::new(state::ClientState::new(Arc::new(
-            messages::StandardLogger::default(),
-        ))));
+    pub fn new(rpc_settings: Option<rpc::RPCSettings>) -> Self {
+        let state = state::ClientState::new(Arc::new(messages::StandardLogger::default()));
 
-        let srv = match rpc_enable {
-            RPCEnabled::Yes(settings) => Some(rpc::RPCServer::run(
-                Arc::clone(&context),
-                settings.addr,
-                settings.password,
-            )),
-            RPCEnabled::No => None,
-        };
+        let rpc_server =
+            rpc_settings.map(|settings| rpc::RPCServer::new(Arc::clone(&state), settings));
 
-        Self {
-            service_threads: Default::default(), //launch_service_threads(&*context),
-            context: context,
-            rpc_server: srv,
-        }
+        Self { state, rpc_server }
     }
 }
 
@@ -158,16 +53,23 @@ fn main() {
         .map(|v| v.parse().unwrap());
     let password = std::env::var(constants::ENV_RPC_PASSWORD).ok();
 
-    let daemon = Daemon::run((addr, password).into());
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
 
-    daemon.context.run(|state| {
-        state.unwrap().messages.insert(
-            None,
-            common::MessagePriority::Info,
-            std::time::SystemTime::now().into(),
-            "Main thread is up and parked",
-        );
-    });
+    let daemon = Daemon::new(addr.map(|addr| rpc::RPCSettings { addr, password }));
+
+    handle.spawn(
+        util::mutex_critical(Arc::clone(&daemon.state), |state| {
+            state.messages.insert(
+                None,
+                common::MessagePriority::Info,
+                std::time::SystemTime::now().into(),
+                "Main thread is up and parked",
+            );
+            Ok(())
+        })
+        .or_else(|_| Err(())),
+    );
 
     loop {
         std::thread::park();

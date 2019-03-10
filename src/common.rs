@@ -75,7 +75,7 @@ impl NetStats {
         unimplemented!()
     }
 
-    pub fn try_from(e: &treexml::Element) -> errors::Result<treexml::Element> {
+    pub fn try_from(e: &treexml::Element) -> Result<treexml::Element, errors::Error> {
         unimplemented!()
     }
 }

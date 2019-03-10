@@ -8,7 +8,6 @@ extern crate uuid;
 
 use app;
 use common;
-use context;
 use coproc;
 use errors;
 use file_names;
@@ -112,20 +111,23 @@ pub struct ProjectData {
 
 impl ProjectData {
     pub fn can_request_work(&self, now: &common::Time) -> bool {
-        !(self.suspended_via_gui || self.master_url_fetch_pending || {
-            if let Some(ref v) = self.min_rpc_time {
-                v > now
-            } else {
-                false
+        !(self.suspended_via_gui
+            || self.master_url_fetch_pending
+            || {
+                if let Some(ref v) = self.min_rpc_time {
+                    v > now
+                } else {
+                    false
+                }
             }
-        } || self.dont_request_more_work)
+            || self.dont_request_more_work)
     }
 
-    pub fn parse_account(&mut self, _: &treexml::Element) -> errors::Result<()> {
+    pub fn parse_account(&mut self, _: &treexml::Element) -> Result<(), errors::Error> {
         Ok(())
     }
 
-    pub fn write_account_file(&self) -> errors::Result<()> {
+    pub fn write_account_file(&self) -> Result<(), errors::Error> {
         Ok(())
     }
 }
@@ -133,7 +135,7 @@ impl ProjectData {
 #[derive(Default)]
 pub struct Project {
     _master_url: String,
-    pub data: Arc<Mutex<ProjectData>>,
+    pub data: ProjectData,
 }
 
 impl Hash for Project {
@@ -154,7 +156,7 @@ impl common::ProjAm for Project {
     }
 
     fn project_name(&self) -> Option<String> {
-        self.data.lock().unwrap().project_name.clone()
+        self.data.project_name.clone()
     }
 }
 
@@ -186,13 +188,18 @@ impl Project {
         v
     }
 
-    pub fn make_project_dir(&self) -> errors::Result<()> {
+    pub fn make_project_dir(&self) -> Result<(), errors::Error> {
         Ok(())
     }
 }
 
+pub trait ProjectManager {
+    fn find_by_url(&self, url: &str) -> Option<&Project>;
+    fn map(&self, f: Box<FnMut(&Project)>);
+}
+
 pub struct Projects {
-    pub data: HashSet<Project>,
+    data: HashSet<Project>,
 }
 
 impl Projects {
@@ -201,7 +208,9 @@ impl Projects {
             data: Default::default(),
         }
     }
+}
 
+impl ProjectManager for Projects {
     pub fn find_by_url(&self, url: &str) -> Option<&Project> {
         self.data.get(&Project {
             _master_url: url.to_string(),

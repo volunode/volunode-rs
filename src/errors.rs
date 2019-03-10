@@ -1,71 +1,51 @@
 extern crate std;
 
-extern crate error_chain;
+extern crate boinc_app_api as api;
 extern crate futures;
 extern crate treexml;
 extern crate uuid;
 
-extern crate boinc_app_api;
-
-error_chain! {
-    links {
-        APIError(boinc_app_api::errors::Error, boinc_app_api::errors::ErrorKind);
-    }
-    foreign_links {
-        StringConversionError(std::string::FromUtf8Error);
-        IOError(std::io::Error);
-        XMLError(treexml::Error);
-    }
-    errors {
-        NotImplementedError(t: ()) {
-            description("not implemented"),
-            display("requested operation is stubbed but will be implemented in the future"),
-        }
-        ConnectError(t: String) {
-            description(""),
-            display("{}", t),
-        }
-        NoSuchTaskError(id: uuid::Uuid) {
-            description("no such task"),
-            display("Task {} does not exist", id),
-        }
-        AlreadyAttachedError(t: String) {}
-        //DataParseError(_: String) {}
-        //InvalidPasswordError(_: String) {}
-        //DaemonError(_: String) {}
-        //NullError(_: String) {}
-        //NetworkError(_: String) {}
-        //StatusError(_: i32) {}
-        AuthError(t: String) {
-            description("authentication error"),
-            display("authentication error"),
-        }
-        InvalidURLError(t: String) {
-            description("invalid URL"),
-            display("invalid URL: {}", &t),
-        }
-        UserPermissionError(t: String) {
-            description("action is not allowed by user"),
-            display("action is not allowed by user: {}", &t),
-        }
-        InternalError(t: String) {
-            description("internal error"),
-            display("internal error has occurred: {}", &t),
-        }
-    }
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "requested operation is stubbed: {}", name)]
+    NotImplementedError { name: String },
+    #[fail(display = "{}", t)]
+    ConnectError { t: String },
+    #[fail(display = "task {} does not exist", id)]
+    NoSuchTaskError { id: uuid::Uuid },
+    #[fail(display = "already attached")]
+    AlreadyAttachedError,
+    //DataParseError(_: String) {}
+    //InvalidPasswordError(_: String) {}
+    //DaemonError(_: String) {}
+    //NullError(_: String) {}
+    //NetworkError(_: String) {}
+    //StatusError(_: i32) {}
+    #[fail(display = "authentication error: {}", what)]
+    AuthError { what: String },
+    #[fail(display = "invalid URL: {}", url)]
+    InvalidURLError { url: String },
+    #[fail(display = "action is not allowed by user: {}", what)]
+    UserPermissionError { what: String },
+    #[fail(display = "internal error has occurred: {}", what)]
+    InternalError { what: String },
+    #[fail(display = "data parsing failed: {}", what)]
+    DataParseError { what: String },
+    #[fail(display = "API error: {}", inner)]
+    APIError { inner: api::Error },
 }
 
-impl<'a> From<&'a Error> for i64 {
-    fn from(v: &Error) -> i64 {
-        match v.kind() {
-            &ErrorKind::AlreadyAttachedError(_) => -130,
-            &ErrorKind::AuthError(_) => -155,
-            &ErrorKind::InvalidURLError(_) => -189,
-            &ErrorKind::UserPermissionError(_) => -201,
+impl Error {
+    pub fn rpc_id(&self) -> i64 {
+        match *self {
+            Error::AlreadyAttachedError => -130,
+            Error::AuthError {} => -155,
+            Error::InvalidURLError {} => -189,
+            Error::UserPermissionError {} => -201,
             _ => -1,
         }
     }
 }
 
-pub type FResult<T> = Box<futures::future::Future<Item = T, Error = Error>>;
-pub type TResult<T> = std::thread::JoinHandle<self::Result<T>>;
+pub type R<T> = Result<T, Error>;
+pub type FResult<T> = Box<futures::Future<Item = T, Error = Error>>;

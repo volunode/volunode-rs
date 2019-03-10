@@ -3,10 +3,10 @@ extern crate std;
 extern crate uuid;
 
 use self::std::io::prelude::*;
-use self::std::process::{Command, Stdio};
-use self::std::sync::{Arc, Mutex, RwLock};
-use self::std::sync::atomic::{AtomicBool, Ordering};
 use self::std::io::BufReader;
+use self::std::process::{Command, Stdio};
+use self::std::sync::atomic::{AtomicBool, Ordering};
+use self::std::sync::{Arc, Mutex, RwLock};
 
 use app::*;
 use errors::*;
@@ -73,37 +73,35 @@ impl SystemProcess {
         let dropping = Arc::new(AtomicBool::new(false));
         let output_cb = Arc::new(Mutex::new(None));
         let input = Arc::new(RwLock::new(None));
-        let process_manager =
-            std::thread::spawn({
-                let procname = procname.to_string();
-                let args = args.to_string();
-                let dropping = Arc::clone(&dropping);
-                let input = Arc::clone(&input);
-                let output_cb = Arc::clone(&output_cb);
-                move || {
-                    let mut process = None;
-                    let mut it: Option<
-                        std::io::Lines<BufReader<std::process::ChildStdout>>,
-                    > = None;
+        let process_manager = std::thread::spawn({
+            let procname = procname.to_string();
+            let args = args.to_string();
+            let dropping = Arc::clone(&dropping);
+            let input = Arc::clone(&input);
+            let output_cb = Arc::clone(&output_cb);
+            move || {
+                let mut process = None;
+                let mut it: Option<std::io::Lines<BufReader<std::process::ChildStdout>>> = None;
 
-                    loop {
-                        if dropping.load(Ordering::Relaxed) {
-                            break;
+                loop {
+                    if dropping.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    match process {
+                        None => {
+                            let mut p = Command::new(&procname)
+                                .arg(&args)
+                                .stdin(Stdio::piped())
+                                .stdout(Stdio::inherit())
+                                .spawn()
+                                .unwrap();
+                            let in_s = p.stdin.take();
+                            it = Some(BufReader::new(p.stdout.take().unwrap()).lines());
+                            process = Some(p);
+                            *input.write().unwrap() = in_s;
                         }
-                        match process {
-                            None => {
-                                let mut p = Command::new(&procname)
-                                    .arg(&args)
-                                    .stdin(Stdio::piped())
-                                    .stdout(Stdio::inherit())
-                                    .spawn()
-                                    .unwrap();
-                                let in_s = p.stdin.take();
-                                it = Some(BufReader::new(p.stdout.take().unwrap()).lines());
-                                process = Some(p);
-                                *input.write().unwrap() = in_s;
-                            }
-                            Some(_) => for line in it.take().unwrap() {
+                        Some(_) => {
+                            for line in it.take().unwrap() {
                                 match line {
                                     Ok(v) => {
                                         {
@@ -121,15 +119,16 @@ impl SystemProcess {
                                         }
                                     }
                                 }
-                            },
+                            }
                         }
-                        *input.write().unwrap() = None;
-                        process = None;
                     }
-
-                    process.take().unwrap().kill();
+                    *input.write().unwrap() = None;
+                    process = None;
                 }
-            });
+
+                process.take().unwrap().kill();
+            }
+        });
 
         Self {
             dropping: dropping,

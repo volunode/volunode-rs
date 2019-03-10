@@ -2,8 +2,8 @@ extern crate uuid;
 
 use workunit;
 
-use std::collections::{HashMap, HashSet};
 use self::uuid::Uuid;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub struct AppVersion {

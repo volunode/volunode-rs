@@ -1,6 +1,7 @@
 [package]
 name = "volunode"
 version = "0.1.0"
+edition = "2018"
 authors = [
     "Artem Vorotnikov <artem@vorotnikov.me>",
 ]
@@ -21,11 +22,8 @@ boinc_app_api = { git = "https://github.com/volunode/boinc-app-api-rs" }
 bytes = "*"
 chan = "*"
 chrono = "*"
-error-chain = "*"
-futures = "*"
-futures-await = "*"
-futures-spawn = "*"
-futures-cpupool = "*"
+failure = "*"
+futures = "0.1"
 rust-crypto = "*"
 serde = "*"
 serde_json = "*"
@@ -33,6 +31,6 @@ tokio-core = "*"
 tokio-io = "*"
 tokio-proto = "*"
 tokio-service = "*"
-treexml = { git = "https://github.com/rahulg/treexml-rs" }
+treexml = "0.7"
 treexml_util = { git = "https://github.com/vorot93/treexml-util" }
 uuid = { version = "*", features = ["use_std", "serde", "v4"] }

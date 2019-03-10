@@ -10,16 +10,16 @@ extern crate uuid;
 use errors;
 use util;
 
-use self::futures::*;
-use self::futures::prelude::*;
 use self::futures::future::{ok, FutureResult, PollFn};
+use self::futures::prelude::*;
+use self::futures::*;
 use self::futures_cpupool::*;
 use self::futures_spawn::*;
 use self::uuid::*;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock, TryLockError};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock, TryLockError};
 
 use app::*;
 use workunit::*;
@@ -135,21 +135,26 @@ impl RealTaskServer {
         root: std::path::PathBuf,
         app_version: &AppVersion,
         wu: &Workunit,
-    ) -> errors::Result<Uuid> {
-        let id = await!(util::mutex_critical(data, move |data| Ok(util::reserve_unique(data, &mut reserved.lock().unwrap()))))?;
+    ) -> errors::R<Uuid> {
+        let id = await!(util::mutex_critical(data, move |data| Ok(
+            util::reserve_unique(data, &mut reserved.lock().unwrap())
+        )))?;
 
         // Create slot directory
         std::fs::create_dir_all(util::task_path(&root, &id));
 
         // Copy task files: appversion, wu, etc
-        Err(errors::ErrorKind::NotImplementedError(()).into())
+        Err(errors::Error::NotImplementedError {
+            name: "create_task".into(),
+        })
     }
 }
 
 impl TaskServer for RealTaskServer {
     fn tasks(&self) -> errors::FResult<HashMap<Uuid, TaskStatus>> {
         Box::new(util::mutex_critical(Arc::clone(&self.data), |data| {
-            Ok(data.iter()
+            Ok(data
+                .iter()
                 .map(|(id, v)| (id.clone(), v.get_status()))
                 .collect())
         }))
@@ -170,23 +175,27 @@ impl TaskServer for RealTaskServer {
         Box::new(util::mutex_critical(
             Arc::clone(&self.data),
             move |d| match d.get_mut(&id) {
-                None => Err(errors::ErrorKind::NotImplementedError(()).into()),
+                None => Err(errors::Error::NoSuchTaskError { id: id }),
                 Some(e) => {
                     //e.status = FullRunStatus::Running(ProcessData {});
-                    Err(errors::ErrorKind::NotImplementedError(()).into())
+                    Err(errors::Error::NotImplementedError {
+                        name: "starting a task".into(),
+                    })
                 }
             },
         ))
     }
 
-    #[async(boxed)]
-    fn stop_task(&self, id: &Uuid) -> errors::Result<()> {
-        Err(errors::ErrorKind::NotImplementedError(()).into())
+    fn stop_task(&self, id: &Uuid) -> errors::FResult<()> {
+        Box::new(async_block! {
+            Err(errors::Error::NotImplementedError { name: "stopping a task".into() })
+        })
     }
 
-    #[async(boxed)]
-    fn abort_task(&self, id: &Uuid) -> errors::Result<()> {
-        Err(errors::ErrorKind::NotImplementedError(()).into())
+    fn abort_task(&self, id: &Uuid) -> errors::FResult<()> {
+        Box::new(async_block! {
+            Err(errors::Error::NotImplementedError { name: "aborting a task".into() })
+        })
     }
 }
 
@@ -264,7 +273,7 @@ impl MockTaskServer {
         Box::new(util::mutex_critical(
             Arc::clone(&self.data),
             move |data| match data.get_mut(&id) {
-                None => Err(errors::ErrorKind::NoSuchTaskError(id).into()),
+                None => Err(errors::Error::NoSuchTaskError { id }),
                 Some(info) => {
                     info.status = v;
                     Ok(())
@@ -289,7 +298,8 @@ impl TaskServer for MockTaskServer {
                     status: RunStatus::Stopped,
                     pct_complete: 0.0,
                 },
-            ).0)
+            )
+            .0)
         }))
     }
 

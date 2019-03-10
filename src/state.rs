@@ -1,12 +1,8 @@
-extern crate chan;
-extern crate std;
-extern crate treexml;
-extern crate uuid;
-
 use acct_mgr;
 use acct_setup;
 use cc_config;
 use common;
+use common::*;
 use constants;
 use errors;
 use file_info;
@@ -18,13 +14,16 @@ use projects;
 use tasks;
 use util;
 
+use chan;
+use failure;
+use futures::prelude::*;
+use std;
+use std::collections::HashMap;
 use std::io::Write;
 use std::ops::Deref;
-
-use std::collections::HashMap;
 use std::sync::Arc;
-
-use common::*;
+use treexml;
+use uuid;
 
 #[derive(Clone)]
 pub struct RunSettings {
@@ -115,6 +114,13 @@ impl<'a> From<&'a ClientState> for treexml::Element {
     }
 }
 
+impl Stream for ClientState {
+    type Item = ();
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {}
+}
+
 impl Default for ClientState {
     fn default() -> Self {
         let messages: messages::SafeLogger = Arc::new(messages::DummyLogger::default());
@@ -150,7 +156,7 @@ impl ClientState {
         }
     }
 
-    pub fn write_state_file(&self) -> errors::Result<()> {
+    pub fn write_state_file(&self) -> Result<(), errors::Error> {
         std::fs::File::create(constants::STATE_FILE_NAME)?
             .write_fmt(format_args!("{}", treexml::Element::from(self)))?;
         Ok(())
@@ -160,13 +166,15 @@ impl ClientState {
         &mut self,
         project: &projects::Project,
         root: &treexml::Element,
-    ) -> errors::Result<()> {
+    ) -> Result<(), errors::Error> {
         for node in &root.children {
             match node.name.as_str() {
                 "file" | "file_info" => {
                     let fi = file_info::FileInfo::from(node);
                     if !fi.download_urls.is_empty() || !fi.upload_urls.is_empty() {
-                        bail!(errors::ErrorKind::XMLError("".into()));
+                        return Err(errors::Error::InvalidURLError {
+                            what: "File URLs cannot be empty".into(),
+                        });
                     }
 
                     let _ = project;
@@ -190,31 +198,24 @@ impl ClientState {
         _auth: &str,
         project_name: &str,
         attached_via_acct_mgr: bool,
-    ) -> errors::Result<()> {
+    ) -> Result<(), errors::Error> {
         if self.cc_config.disallow_attach {
-            bail!(errors::ErrorKind::UserPermissionError(
-                "Adding projects is not allowed".into(),
-            ));
+            return Err(errors::Error::UserPermissionError {
+                what: "Adding projects is not allowed".into(),
+            });
         }
 
         let canonical_master_url = util::canonicalize_url(url);
 
-        if false {
-            bail!(errors::ErrorKind::InvalidURLError(
-                "Invalid master URL".into(),
-            ));
-        }
-
         let auth = _auth.trim().to_string();
         if auth.is_empty() {
-            bail!(errors::ErrorKind::AuthError("Missing account key".into()));
+            return Err(errors::Error::AuthError {
+                what: "Missing account key".into(),
+            });
         }
 
         if self.projects.find_by_url(&canonical_master_url).is_some() {
-            bail!(errors::ErrorKind::AlreadyAttachedError(format!(
-                "Already attached to project {}",
-                &canonical_master_url
-            )));
+            return Err(errors::Error::AlreadyAttachedError);
         }
 
         let proj = projects::Project::new(canonical_master_url.to_string());
@@ -229,10 +230,13 @@ impl ClientState {
 
             p.write_account_file()?;
 
-            p.parse_account(&treexml::Document::parse(std::fs::File::open(
-                file_names::account_filename(&canonical_master_url),
-            )?)?.root
-                .unwrap())?;
+            p.parse_account(
+                &treexml::Document::parse(std::fs::File::open(file_names::account_filename(
+                    &canonical_master_url,
+                ))?)?
+                .root
+                .unwrap(),
+            )?;
         }
 
         let path = std::path::PathBuf::from(&format!(
